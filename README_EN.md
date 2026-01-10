@@ -26,7 +26,8 @@ A robust, serverless virtual goods shop built with **Next.js 16**, **Vercel Post
     - 🔒 **Stock Reservation**: 1-minute hold after entering checkout to prevent oversell.
     - ⏱️ **Auto-Cancel**: Unpaid orders are cancelled after 5 minutes and stock is released.
     - 🧾 **Order Center**: Order list and details pages.
-    - 🔄 **Refund Requests**: Users can submit refund requests for admin review.
+    - 🔔 **Pending Order Alert**: Homepage banner reminds users of unpaid orders.
+    - 🔄 **Refund Requests**: Users can submit refund requests for admin review (supports client-side & server-side refund).
 - **Admin Console**:
     - 📊 **Sales Stats**: Today/week/month/total overview.
     - ⚠️ **Low Stock Alerts**: Configurable threshold and warnings.
@@ -34,6 +35,7 @@ A robust, serverless virtual goods shop built with **Next.js 16**, **Vercel Post
     - 🏷️ **Category Management**: CRUD categories with icons and ordering.
     - 🗂️ **Card Inventory**: Bulk import (newline/comma) with de-duplication and delete unused card keys.
     - 🧯 **Stock Self-Heal**: Handles legacy `is_used = NULL` that can cause false out-of-stock, and backfills it to `false`.
+    - 📦 **Total Stock Display**: Homepage shows "Available + Locked" stock to prevent perceived sell-outs.
     - 💳 **Orders & Refunds**: Pagination/search/filters, order detail, mark paid/delivered/cancel, client-mode refund + optional server proxy.
     - 🧹 **Order Cleanup**: Bulk select and bulk delete.
     - ⭐ **Review Management**: Search and delete reviews.
