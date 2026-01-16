@@ -1,5 +1,5 @@
 {
-    "name": "ldc-shop-next",
+    "name": "ldc-shop",
     "main": ".open-next/worker.js",
     "compatibility_date": "2025-11-12",
     "compatibility_flags": [
