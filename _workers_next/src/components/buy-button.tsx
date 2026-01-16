@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { createOrder } from "@/actions/checkout"
 import { getUserPoints } from "@/actions/points"
 import { Button } from "@/components/ui/button"
@@ -26,6 +26,7 @@ export function BuyButton({ productId, price, productName, disabled, quantity = 
     const [usePoints, setUsePoints] = useState(false)
     const [pointsLoading, setPointsLoading] = useState(false)
     const [hasAutoOpened, setHasAutoOpened] = useState(false)
+    const isNavigatingRef = useRef(false)
     const { t } = useI18n()
 
     const numericalPrice = Number(price) * quantity
@@ -57,6 +58,8 @@ export function BuyButton({ productId, price, productName, disabled, quantity = 
     }
 
     const handleBuy = async () => {
+        if (isNavigatingRef.current) return
+        
         try {
             setLoading(true)
             const result = await createOrder(productId, quantity, undefined, usePoints)
@@ -64,15 +67,14 @@ export function BuyButton({ productId, price, productName, disabled, quantity = 
             if (!result?.success) {
                 const message = result?.error ? t(result.error) : t('common.error')
                 toast.error(message)
-                setLoading(false)
+                if (!isNavigatingRef.current) setLoading(false)
                 return
             }
 
             if (result.isZeroPrice && result.url) {
-                // Close dialog before navigation to prevent React errors
-                setOpen(false)
+                // Mark as navigating to prevent further state updates
+                isNavigatingRef.current = true
                 toast.success(t('buy.paymentSuccessPoints'))
-                await new Promise(resolve => setTimeout(resolve, 50))
                 window.location.href = result.url
                 return
             }
@@ -81,18 +83,15 @@ export function BuyButton({ productId, price, productName, disabled, quantity = 
 
             if (!params || !url) {
                 toast.error(t('common.error'))
-                setLoading(false)
+                if (!isNavigatingRef.current) setLoading(false)
                 return
             }
 
             if (params) {
-                // Close dialog before navigation to prevent React errors on Safari
-                setOpen(false)
+                // Mark as navigating to prevent React errors on Safari
+                isNavigatingRef.current = true
                 
-                // Small delay to let React finish before page navigation
-                await new Promise(resolve => setTimeout(resolve, 50))
-                
-                // Submit Form
+                // Submit Form immediately without closing dialog
                 const form = document.createElement('form')
                 form.method = 'POST'
                 form.action = url as string
@@ -107,12 +106,14 @@ export function BuyButton({ productId, price, productName, disabled, quantity = 
 
                 document.body.appendChild(form)
                 form.submit()
-                return // Don't update state after navigation
+                return
             }
 
         } catch (e: any) {
-            toast.error(e.message || "Failed to create order")
-            setLoading(false)
+            if (!isNavigatingRef.current) {
+                toast.error(e.message || "Failed to create order")
+                setLoading(false)
+            }
         }
     }
 
@@ -131,7 +132,7 @@ export function BuyButton({ productId, price, productName, disabled, quantity = 
                 {t('common.buyNow')}
             </Button>
 
-            <Dialog open={open} onOpenChange={setOpen}>
+            <Dialog open={open} onOpenChange={(v) => !isNavigatingRef.current && setOpen(v)}>
                 <DialogContent>
                     <DialogHeader>
                         <DialogTitle>{t('common.buyNow')}</DialogTitle>

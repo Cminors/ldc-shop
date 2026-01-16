@@ -141,7 +141,12 @@
         "paymentReceived": "Payment received. Processing delivery...",
         "stockDepleted": "We're sorry! Multiple customers paid almost simultaneously, and the last item was claimed just before your payment completed. Your payment has been received — please contact admin for a full refund.",
         "orderRefunded": "This order has been refunded.",
-        "cancelledMessage": "This order was cancelled due to payment timeout.",
+        "cancelledMessage": "This order has been cancelled.",
+        "cancelOrder": "Cancel Order",
+        "confirmCancel": "Are you sure you want to cancel this order? This will release the reserved stock.",
+        "cancelled": "Order cancelled",
+        "cannotCancel": "Cannot cancel this order",
+        "notFound": "Order not found",
         "paymentSuccess": "Payment successful!",
         "status": {
             "pending": "Pending",

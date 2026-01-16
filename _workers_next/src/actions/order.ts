@@ -5,7 +5,7 @@ import { queryOrderStatus } from "@/lib/epay"
 import { processOrderFulfillment } from "@/lib/order-processing"
 import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
-import { orders } from "@/lib/db/schema"
+import { orders, cards } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
 import { withOrderColumnFallback } from "@/lib/db/queries"
 
@@ -54,5 +54,42 @@ export async function checkOrderStatus(orderId: string) {
     } catch (e: any) {
         console.error("Check order status failed", e)
         return { success: false, error: e.message }
+    }
+}
+
+export async function cancelPendingOrder(orderId: string) {
+    const session = await auth()
+    if (!session?.user) return { success: false, error: 'common.error' }
+
+    // Check ownership and status
+    const order = await withOrderColumnFallback(async () => {
+        return await db.query.orders.findFirst({
+            where: eq(orders.orderId, orderId),
+            columns: { userId: true, status: true }
+        })
+    })
+
+    if (!order) return { success: false, error: 'order.notFound' }
+    if (order.userId !== session.user.id) return { success: false, error: 'common.error' }
+    if (order.status !== 'pending') return { success: false, error: 'order.cannotCancel' }
+
+    try {
+        // Release reserved cards
+        await db.update(cards)
+            .set({ reservedOrderId: null, reservedAt: null })
+            .where(eq(cards.reservedOrderId, orderId))
+
+        // Update order status
+        await db.update(orders)
+            .set({ status: 'cancelled' })
+            .where(eq(orders.orderId, orderId))
+
+        revalidatePath(`/order/${orderId}`)
+        revalidatePath('/orders')
+        
+        return { success: true }
+    } catch (e: any) {
+        console.error("Cancel order failed", e)
+        return { success: false, error: 'common.error' }
     }
 }

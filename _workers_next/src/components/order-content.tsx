@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { requestRefund } from "@/actions/refund-requests"
 import { toast } from "sonner"
 import { useEffect } from "react"
-import { checkOrderStatus } from "@/actions/order"
+import { checkOrderStatus, cancelPendingOrder } from "@/actions/order"
 import { useRouter } from "next/navigation"
 import { isPaymentOrder } from "@/lib/payment"
 
@@ -254,39 +254,65 @@ export function OrderContent({ order, canViewKey, isOwner, refundRequest }: Orde
                             </div>
 
                             {isOwner && order.status === 'pending' && (
-                                <Button
-                                    size="sm"
-                                    onClick={async () => {
-                                        setSubmitting(true)
-                                        try {
-                                            const { getRetryPaymentParams } = await import("@/actions/checkout")
-                                            const result = await getRetryPaymentParams(order.orderId)
-                                            if (result.success && result.url && result.params) {
-                                                const form = document.createElement('form')
-                                                form.method = 'POST'
-                                                form.action = result.url
-                                                Object.entries(result.params).forEach(([k, v]) => {
-                                                    const input = document.createElement('input')
-                                                    input.type = 'hidden'
-                                                    input.name = k
-                                                    input.value = String(v)
-                                                    form.appendChild(input)
-                                                })
-                                                document.body.appendChild(form)
-                                                form.submit()
-                                            } else {
-                                                toast.error(result.error ? t(result.error) : t('common.error'))
+                                <div className="flex gap-2">
+                                    <Button
+                                        size="sm"
+                                        variant="outline"
+                                        onClick={async () => {
+                                            if (!confirm(t('order.confirmCancel'))) return
+                                            setSubmitting(true)
+                                            try {
+                                                const result = await cancelPendingOrder(order.orderId)
+                                                if (result.success) {
+                                                    toast.success(t('order.cancelled'))
+                                                    router.refresh()
+                                                } else {
+                                                    toast.error(result.error ? t(result.error) : t('common.error'))
+                                                }
+                                            } catch (e: any) {
+                                                toast.error(e.message)
+                                            } finally {
+                                                setSubmitting(false)
                                             }
-                                        } catch (e: any) {
-                                            toast.error(e.message)
-                                        } finally {
-                                            setSubmitting(false)
-                                        }
-                                    }}
-                                    disabled={submitting}
-                                >
-                                    {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : t('common.payNow')}
-                                </Button>
+                                        }}
+                                        disabled={submitting}
+                                    >
+                                        {t('order.cancelOrder')}
+                                    </Button>
+                                    <Button
+                                        size="sm"
+                                        onClick={async () => {
+                                            setSubmitting(true)
+                                            try {
+                                                const { getRetryPaymentParams } = await import("@/actions/checkout")
+                                                const result = await getRetryPaymentParams(order.orderId)
+                                                if (result.success && result.url && result.params) {
+                                                    const form = document.createElement('form')
+                                                    form.method = 'POST'
+                                                    form.action = result.url
+                                                    Object.entries(result.params).forEach(([k, v]) => {
+                                                        const input = document.createElement('input')
+                                                        input.type = 'hidden'
+                                                        input.name = k
+                                                        input.value = String(v)
+                                                        form.appendChild(input)
+                                                    })
+                                                    document.body.appendChild(form)
+                                                    form.submit()
+                                                } else {
+                                                    toast.error(result.error ? t(result.error) : t('common.error'))
+                                                }
+                                            } catch (e: any) {
+                                                toast.error(e.message)
+                                            } finally {
+                                                setSubmitting(false)
+                                            }
+                                        }}
+                                        disabled={submitting}
+                                    >
+                                        {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : t('common.payNow')}
+                                    </Button>
+                                </div>
                             )}
                         </div>
                     )}
