@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { useI18n } from "@/lib/i18n/context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -18,6 +18,8 @@ export function AdminCategoriesContent({ categories }: { categories: CategoryRow
   const [icon, setIcon] = useState("")
   const [sortOrder, setSortOrder] = useState("0")
   const [saving, setSaving] = useState(false)
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const deleteLock = useRef<number | null>(null)
 
   const sorted = useMemo(() => {
     return [...categories].sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0) || a.name.localeCompare(b.name))
@@ -65,17 +67,17 @@ export function AdminCategoriesContent({ categories }: { categories: CategoryRow
           <CardTitle>{t('admin.categories.create')}</CardTitle>
         </CardHeader>
         <CardContent className="grid gap-4 md:grid-cols-3">
-          <div className="grid gap-2">
-            <Label htmlFor="cat-name">{t('admin.categories.name')}</Label>
-            <Input id="cat-name" value={name} onChange={(e) => setName(e.target.value)} placeholder={t('admin.categories.namePlaceholder')} />
+          <div className="floating-field">
+            <Input id="cat-name" value={name} onChange={(e) => setName(e.target.value)} placeholder=" " />
+            <Label htmlFor="cat-name" className="floating-label">{t('admin.categories.name')}</Label>
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="cat-icon">{t('admin.categories.icon')}</Label>
-            <Input id="cat-icon" value={icon} onChange={(e) => setIcon(e.target.value)} placeholder={t('admin.categories.iconPlaceholder')} />
+          <div className="floating-field">
+            <Input id="cat-icon" value={icon} onChange={(e) => setIcon(e.target.value)} placeholder=" " />
+            <Label htmlFor="cat-icon" className="floating-label">{t('admin.categories.icon')}</Label>
           </div>
-          <div className="grid gap-2">
-            <Label htmlFor="cat-sort">{t('admin.categories.sortOrder')}</Label>
-            <Input id="cat-sort" type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} />
+          <div className="floating-field">
+            <Input id="cat-sort" type="number" value={sortOrder} onChange={(e) => setSortOrder(e.target.value)} placeholder=" " />
+            <Label htmlFor="cat-sort" className="floating-label">{t('admin.categories.sortOrder')}</Label>
           </div>
           <div className="md:col-span-3 flex justify-end">
             <Button onClick={handleCreate} disabled={saving || !name.trim()}>
@@ -132,14 +134,21 @@ export function AdminCategoriesContent({ categories }: { categories: CategoryRow
                     variant="destructive"
                     size="sm"
                     onClick={async () => {
+                      if (deleteLock.current === c.id) return
                       if (!confirm(t('common.confirm') + '?')) return
+                      deleteLock.current = c.id
+                      setDeletingId(c.id)
                       try {
                         await deleteCategory(c.id)
                         toast.success(t('common.success'))
                       } catch (e: any) {
                         toast.error(e.message)
+                      } finally {
+                        setDeletingId(null)
+                        deleteLock.current = null
                       }
                     }}
+                    disabled={deletingId === c.id}
                   >
                     {t('common.delete')}
                   </Button>
@@ -152,4 +161,3 @@ export function AdminCategoriesContent({ categories }: { categories: CategoryRow
     </div>
   )
 }
-

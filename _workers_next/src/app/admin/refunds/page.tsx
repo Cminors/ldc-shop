@@ -2,8 +2,7 @@ import { db } from "@/lib/db"
 import { orders, refundRequests } from "@/lib/db/schema"
 import { desc, eq } from "drizzle-orm"
 import { AdminRefundsContent } from "@/components/admin/refunds-content"
-
-export const dynamic = 'force-dynamic';
+import { unstable_noStore } from "next/cache"
 
 function isMissingTable(error: any) {
   const errorString = JSON.stringify(error)
@@ -16,6 +15,7 @@ function isMissingTable(error: any) {
 }
 
 export default async function AdminRefundsPage() {
+  unstable_noStore()
   let rows: any[] = []
   try {
     rows = await db

@@ -1,7 +1,7 @@
 import { db } from "@/lib/db"
 import { cards } from "@/lib/db/schema"
 import { desc, sql } from "drizzle-orm"
-import { getProductForAdmin } from "@/lib/db/queries"
+import { cleanupExpiredCardsIfNeeded, getProductForAdmin } from "@/lib/db/queries"
 import { notFound } from "next/navigation"
 import { CardsContent } from "@/components/admin/cards-content"
 
@@ -13,9 +13,10 @@ export default async function CardsPage({ params }: { params: Promise<{ id: stri
     // Get Unused Cards
     let unusedCards: any[] = []
     try {
+        await cleanupExpiredCardsIfNeeded(undefined, id)
         unusedCards = await db.select()
             .from(cards)
-            .where(sql`${cards.productId} = ${id} AND COALESCE(${cards.isUsed}, 0) = 0 AND (${cards.reservedAt} IS NULL OR ${cards.reservedAt} < ${Date.now() - 60000})`)
+            .where(sql`${cards.productId} = ${id} AND COALESCE(${cards.isUsed}, 0) = 0 AND (${cards.expiresAt} IS NULL OR ${cards.expiresAt} > ${Date.now()}) AND (${cards.reservedAt} IS NULL OR ${cards.reservedAt} < ${Date.now() - 60000})`)
             .orderBy(desc(cards.createdAt))
     } catch (error: any) {
         const errorString = JSON.stringify(error)
@@ -36,6 +37,7 @@ export default async function CardsPage({ params }: { params: Promise<{ id: stri
                 is_used INTEGER DEFAULT 0,
                 reserved_order_id TEXT,
                 reserved_at INTEGER,
+                expires_at INTEGER,
                 used_at INTEGER,
                 created_at INTEGER DEFAULT (unixepoch() * 1000)
             );
@@ -44,7 +46,7 @@ export default async function CardsPage({ params }: { params: Promise<{ id: stri
 
         unusedCards = await db.select()
             .from(cards)
-            .where(sql`${cards.productId} = ${id} AND COALESCE(${cards.isUsed}, 0) = 0 AND (${cards.reservedAt} IS NULL OR ${cards.reservedAt} < ${Date.now() - 60000})`)
+            .where(sql`${cards.productId} = ${id} AND COALESCE(${cards.isUsed}, 0) = 0 AND (${cards.expiresAt} IS NULL OR ${cards.expiresAt} > ${Date.now()}) AND (${cards.reservedAt} IS NULL OR ${cards.reservedAt} < ${Date.now() - 60000})`)
             .orderBy(desc(cards.createdAt))
     }
 

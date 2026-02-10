@@ -2,8 +2,9 @@ import { db } from "@/lib/db"
 import { products, reviews } from "@/lib/db/schema"
 import { desc, eq } from "drizzle-orm"
 import { AdminReviewsContent } from "@/components/admin/reviews-content"
+import { Suspense } from "react"
 
-export default async function AdminReviewsPage() {
+async function ReviewsContent() {
   const rows = await db
     .select({
       id: reviews.id,
@@ -38,3 +39,21 @@ export default async function AdminReviewsPage() {
   )
 }
 
+function ReviewsFallback() {
+  return (
+    <div className="space-y-4">
+      <div className="h-8 w-40 rounded-md bg-muted/60 animate-pulse" />
+      <div className="h-20 w-full rounded-xl bg-muted/40 animate-pulse" />
+      <div className="h-20 w-full rounded-xl bg-muted/40 animate-pulse" />
+      <div className="h-20 w-full rounded-xl bg-muted/40 animate-pulse" />
+    </div>
+  )
+}
+
+export default function AdminReviewsPage() {
+  return (
+    <Suspense fallback={<ReviewsFallback />}>
+      <ReviewsContent />
+    </Suspense>
+  )
+}

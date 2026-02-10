@@ -36,7 +36,8 @@ export function ReviewForm({ productId, orderId, onSuccess }: ReviewFormProps) {
                 setSubmitted(true)
                 onSuccess?.()
             } else {
-                setError(result.error || t('review.submitError'))
+                const message = result.error ? t(result.error) : t('review.submitError')
+                setError(message)
             }
         } catch {
             setError(t('review.submitError'))

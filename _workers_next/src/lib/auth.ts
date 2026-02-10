@@ -46,6 +46,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
             return session
         }
     },
+    pages: {
+        signIn: "/login"
+    },
     // Use OAUTH_CLIENT_SECRET as fallback if NEXTAUTH_SECRET is not set
     secret: process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET || process.env.OAUTH_CLIENT_SECRET,
     trustHost: true,

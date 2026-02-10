@@ -1,7 +1,7 @@
 import { getSetting } from "@/lib/db/queries"
-import { AdminExportContent } from "@/components/admin/export-content"
+import { AdminDataContent } from "@/components/admin/export-content"
 
-export default async function AdminExportPage() {
+export default async function AdminDataPage() {
   let shopName: string | null = null
   try {
     shopName = await getSetting("shop_name")
@@ -9,6 +9,6 @@ export default async function AdminExportPage() {
     shopName = null
   }
 
-  return <AdminExportContent shopName={shopName} />
+  return <AdminDataContent shopName={shopName} />
 }
 

@@ -2,10 +2,9 @@ import { db } from "@/lib/db"
 import { orders } from "@/lib/db/schema"
 import { and, desc, eq, or, sql } from "drizzle-orm"
 import { AdminOrdersContent } from "@/components/admin/orders-content"
-import { cancelExpiredOrders, withOrderColumnFallback } from "@/lib/db/queries"
+import { cancelExpiredOrders, normalizeTimestampMs, withOrderColumnFallback } from "@/lib/db/queries"
 import { PAYMENT_PRODUCT_ID } from "@/lib/payment"
-
-export const dynamic = 'force-dynamic';
+import { unstable_noStore } from "next/cache"
 
 function parseIntParam(value: unknown, fallback: number) {
     const num = typeof value === 'string' ? Number.parseInt(value, 10) : NaN
@@ -20,6 +19,7 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 export default async function AdminOrdersPage(props: {
     searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
+    unstable_noStore()
     const searchParams = await props.searchParams
     try {
         await cancelExpiredOrders()
@@ -29,20 +29,12 @@ export default async function AdminOrdersPage(props: {
 
     const q = (firstParam(searchParams.q) || '').trim()
     const status = (firstParam(searchParams.status) || 'all').trim()
-    const fulfillment = (firstParam(searchParams.fulfillment) || 'all').trim()
     const page = parseIntParam(firstParam(searchParams.page), 1)
     const pageSize = Math.min(parseIntParam(firstParam(searchParams.pageSize), 50), 200)
 
     const whereParts: any[] = []
     if (status !== 'all') {
         whereParts.push(eq(orders.status, status))
-    }
-    if (fulfillment === 'needsDelivery') {
-        whereParts.push(and(
-            eq(orders.status, 'paid'),
-            sql`${orders.cardKey} IS NULL`,
-            sql`${orders.productId} <> ${PAYMENT_PRODUCT_ID}`
-        ))
     }
     if (q) {
         const like = `%${q}%`
@@ -65,7 +57,7 @@ export default async function AdminOrdersPage(props: {
         return await Promise.all([
             db.query.orders.findMany({
                 where: whereExpr,
-                orderBy: [desc(orders.createdAt)],
+                orderBy: [desc(normalizeTimestampMs(orders.createdAt))],
                 limit: pageSize,
                 offset,
             }),
@@ -93,7 +85,6 @@ export default async function AdminOrdersPage(props: {
             pageSize={pageSize}
             query={q}
             status={status}
-            fulfillment={fulfillment}
         />
     )
 }

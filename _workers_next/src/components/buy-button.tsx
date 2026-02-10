@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react"
 import { createOrder } from "@/actions/checkout"
 import { getUserPoints } from "@/actions/points"
 import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Loader2, Coins } from "lucide-react"
@@ -17,15 +18,17 @@ interface BuyButtonProps {
     disabled?: boolean
     quantity?: number
     autoOpen?: boolean // Auto-open dialog when mounted (for after warning confirmation)
+    emailConfigured?: boolean
 }
 
-export function BuyButton({ productId, price, productName, disabled, quantity = 1, autoOpen = false }: BuyButtonProps) {
+export function BuyButton({ productId, price, productName, disabled, quantity = 1, autoOpen = false, emailConfigured = false }: BuyButtonProps) {
     const [loading, setLoading] = useState(false)
     const [open, setOpen] = useState(false)
     const [points, setPoints] = useState(0)
     const [usePoints, setUsePoints] = useState(false)
     const [pointsLoading, setPointsLoading] = useState(false)
     const [hasAutoOpened, setHasAutoOpened] = useState(false)
+    const [email, setEmail] = useState('')
     const isNavigatingRef = useRef(false)
     const { t } = useI18n()
 
@@ -59,10 +62,10 @@ export function BuyButton({ productId, price, productName, disabled, quantity = 
 
     const handleBuy = async () => {
         if (isNavigatingRef.current) return
-        
+
         try {
             setLoading(true)
-            const result = await createOrder(productId, quantity, undefined, usePoints)
+            const result = await createOrder(productId, quantity, email, usePoints)
 
             if (!result?.success) {
                 const message = result?.error ? t(result.error) : t('common.error')
@@ -79,9 +82,9 @@ export function BuyButton({ productId, price, productName, disabled, quantity = 
                 return
             }
 
-            const { url, params } = result
+            const { params } = result
 
-            if (!params || !url) {
+            if (!params) {
                 toast.error(t('common.error'))
                 if (!isNavigatingRef.current) setLoading(false)
                 return
@@ -90,11 +93,11 @@ export function BuyButton({ productId, price, productName, disabled, quantity = 
             if (params) {
                 // Mark as navigating to prevent React errors on Safari
                 isNavigatingRef.current = true
-                
+
                 // Submit Form immediately without closing dialog
                 const form = document.createElement('form')
                 form.method = 'POST'
-                form.action = url as string
+                form.action = '/paying'
 
                 Object.entries(params as Record<string, any>).forEach(([k, v]) => {
                     const input = document.createElement('input')
@@ -125,7 +128,7 @@ export function BuyButton({ productId, price, productName, disabled, quantity = 
         <>
             <Button
                 size="lg"
-                className="w-full md:w-auto bg-foreground text-background hover:bg-foreground/90 cursor-pointer"
+                className="w-full md:w-auto bg-primary text-primary-foreground hover:bg-primary/90 cursor-pointer"
                 onClick={handleInitialClick}
                 disabled={disabled}
             >
@@ -144,6 +147,19 @@ export function BuyButton({ productId, price, productName, disabled, quantity = 
                             <span className="font-medium">{t('buy.modal.price')}</span>
                             <span>{numericalPrice.toFixed(2)}</span>
                         </div>
+
+                    <div className="floating-field">
+                        <Input
+                            id="email"
+                            type="text"
+                            placeholder=" "
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                        />
+                        <Label htmlFor="email" className="floating-label">
+                            {emailConfigured ? t('buy.modal.emailLabelConfigured') : t('buy.modal.emailLabelUnconfigured')}
+                        </Label>
+                    </div>
 
                         {points > 0 && (
                             <div className="flex items-center space-x-2 border p-3 rounded-md">
@@ -175,7 +191,7 @@ export function BuyButton({ productId, price, productName, disabled, quantity = 
                         <Button variant="outline" onClick={() => setOpen(false)} disabled={loading}>
                             {t('common.cancel')}
                         </Button>
-                        <Button onClick={handleBuy} disabled={loading} className="bg-foreground text-background hover:bg-foreground/90">
+                        <Button onClick={handleBuy} disabled={loading} className="bg-primary text-primary-foreground hover:bg-primary/90">
                             {loading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             {finalPrice === 0 ? t('buy.modal.payWithPoints') : t('buy.modal.proceedPayment')}
                         </Button>

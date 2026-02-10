@@ -22,44 +22,62 @@ This architecture aims to combine the development efficiency of Next.js with the
 
 
 ## ✨ Features
-- **Modern Stack**: Next.js 16 (App Router), Tailwind CSS, TypeScript.
-- **Vercel Native**: One-click deploy with Vercel Postgres database.
+
+- **Modern Stack**: Next.js 15 (App Router), Tailwind CSS, TypeScript.
+- **Edge Native**: Cloudflare Workers + D1 Database, low cost and high performance.
 - **Linux DO Integration**: Built-in OIDC login and EasyPay payments.
 - **Storefront Experience**:
     - 🔍 **Search & Categories**: Client-side search and category filters.
-    - 📢 **Announcement Banner**: Configurable homepage announcements (supports scheduled start/end).
+    - 📢 **Announcement Banner**: Configurable homepage announcements.
     - 📝 **Markdown Descriptions**: Rich product descriptions.
+    - ⚠️ **Purchase Warning**: Optional pre-purchase warning modal.
     - 🔥 **Hot & Discounts**: Hot tag and original/discount price display.
     - ⭐ **Ratings & Reviews**: Verified buyers can rate and review.
     - 📦 **Stock & Sold Counters**: Real-time inventory and sales display.
+    - ♾️ **Shared Products**: Infinite-stock items for shared accounts/tutorials.
     - 🚫 **Purchase Limits**: Limit purchases by paid order count.
+    - 🔢 **Quantity Selection**: Support purchasing multiple items.
+    - 🏷️ **Custom Store Name**: Configurable store name in header/title.
 - **Orders & Delivery**:
     - ✅ **Payment Callback Verification**: Signature and amount checks.
     - 🎁 **Auto Delivery**: Card key delivery on payment; paid status retained if out of stock.
+    - 📦 **Multi-Card Delivery**: Display multiple card keys for multi-quantity orders.
     - 🔒 **Stock Reservation**: 5-minute hold after entering checkout to prevent oversell.
     - ⏱️ **Auto-Cancel**: Unpaid orders are cancelled after 5 minutes and stock is released.
     - 🧾 **Order Center**: Order list and details pages.
     - 🔔 **Pending Order Alert**: Homepage banner reminds users of unpaid orders.
-    - 🔄 **Refund Requests**: Users can submit refund requests for admin review (supports client-side & server-side refund).
-    - 💳 **Payment QR**: Admins can generate payment links/QR codes for direct payments without requiring a product.
+    - 🔄 **Refund Requests**: Users can submit refund requests for admin review.
+    - ✅ **Auto Refund**: Auto-trigger refunds after approval with error handling.
+    - 💳 **Payment QR**: Admins can generate payment links/QR codes for direct payments.
 - **Admin Console**:
     - 📊 **Sales Stats**: Today/week/month/total overview.
     - ⚠️ **Low Stock Alerts**: Configurable threshold and warnings.
-    - 🧩 **Product Management**: Create/edit, enable/disable, reorder, purchase limits, hot tag, discount price.
+    - 🧩 **Product Management**: Create/edit, enable/disable, reorder, purchase limits.
     - 🏷️ **Category Management**: CRUD categories with icons and ordering.
-    - 🗂️ **Card Inventory**: Bulk import (newline/comma) with de-duplication and delete unused card keys.
-    - 🧯 **Stock Self-Heal**: Handles legacy `is_used = NULL` that can cause false out-of-stock, and backfills it to `false`.
-    - 📦 **Total Stock Display**: Homepage shows "Available + Locked" stock to prevent perceived sell-outs.
-    - 💳 **Orders & Refunds**: Pagination/search/filters, order detail, mark paid/delivered/cancel, client-mode refund + optional server proxy.
+    - 🗂️ **Card Inventory**: Bulk import and bulk delete unused card keys.
+    - 💳 **Order Management**: Pagination/search/filters, order detail, mark paid/delivered/cancel.
     - 🧹 **Order Cleanup**: Bulk select and bulk delete.
     - ⭐ **Review Management**: Search and delete reviews.
-    - 📦 **Data Export**: Export orders/products/reviews/settings; full dump JSON + D1 SQL.
+    - 📦 **Data Management**: Full SQL export (D1 compatible), import from Vercel SQL.
     - 📣 **Announcements**: Homepage announcement management.
-    - 🏷️ **Store Name**: Editable in admin and reflected in header/title.
+    - 👥 **Customer Management**: View customers, manage points, block/unblock.
+    - 📨 **Message Center**: Send inbox messages to all users or specific users, with history.
+    - ⚙️ **Refund Settings**: Toggle whether refunded card keys return to stock.
+    - 🎨 **Theme & Footer**: Theme color selection and custom footer text.
+    - 🔔 **Update Check**: Admin panel auto-detects new versions.
+- **Points System**:
+    - ✨ **Daily Check-in**: Users earn points by daily check-in.
+    - 💰 **Points Discount**: Use points to offset purchase amounts.
+    - 🎁 **Points Payment**: If points cover full amount, no payment gateway needed.
 - **I18n & Theme**:
     - 🌐 **English/Chinese switcher**.
     - 🌓 **Light/Dark/System themes**.
-    - ⏱️ **Auto Update (Upstream Sync)**: GitHub Actions workflow included for Fork users to auto-sync upstream changes and trigger Vercel deploy.
+    - ⏱️ **Auto Update**: GitHub Actions workflow for upstream sync.
+- **Notifications**:
+    - 📧 **Delivery Email**: Send order delivery notifications via Resend.
+    - 📢 **Telegram Notifications**: New order push notifications via Telegram Bot.
+    - 📮 **Inbox Notifications**: User inbox for delivery/refund/admin messages.
+    - 🌐 **LDC Navigator**: Opt-in store listing and public navigation page.
 
 ## 🚀 One-Click Deploy
 
@@ -128,7 +146,7 @@ Go to [connect.linux.do](https://connect.linux.do) to create/configure:
 *   **App Description**: `LDC Store Next`
 *   **Callback URL**: `https://store.chatgpt.org.uk/api/auth/callback/linuxdo`
 
-Get **Client ID** and **Client Secret**, and fill them into Vercel Environment Variables as `OAUTH_CLIENT_ID` and `OAUTH_CLIENT_SECRET`.
+Get **Client ID** and **Client Secret**, and fill them into environment variables as `OAUTH_CLIENT_ID` and `OAUTH_CLIENT_SECRET` (**Secret recommended**).
 
 ### 2. EPay (Linux DO Credit)
 Go to [credit.linux.do](https://credit.linux.do) to create/configure:
@@ -138,11 +156,11 @@ Go to [credit.linux.do](https://credit.linux.do) to create/configure:
 *   **Callback URI**: `https://store.chatgpt.org.uk/callback`
 *   **Notify URL**: `https://store.chatgpt.org.uk/api/notify`
 
-Get **Client ID** and **Client Secret**, and fill them into Vercel Environment Variables as `MERCHANT_ID` and `MERCHANT_KEY`.
+Get **Client ID** and **Client Secret**, and fill them into environment variables as `MERCHANT_ID` and `MERCHANT_KEY` (**Secret recommended**).
 
 ### 3. Other Variables
-*   **ADMIN_USERS**: Admin usernames, comma separated (e.g., `chatgpt,admin`).
-*   **NEXT_PUBLIC_APP_URL**: Your full app URL (e.g., `https://store.chatgpt.org.uk`).
+*   **ADMIN_USERS**: Admin usernames, comma separated (e.g., `chatgpt,admin`) (**Secret recommended**).
+*   **NEXT_PUBLIC_APP_URL**: Your full app URL (e.g., `https://store.chatgpt.org.uk`). **Must be Text, not Secret**.
 
 ## 🛠️ Local Development
 

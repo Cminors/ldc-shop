@@ -7,6 +7,7 @@ import { generateOrderId, generateSign } from "@/lib/crypto"
 import { cookies } from "next/headers"
 import { PAYMENT_PRODUCT_ID, PAYMENT_PRODUCT_NAME } from "@/lib/payment"
 import { withOrderColumnFallback } from "@/lib/db/queries"
+import { getAdminUsernames } from "@/lib/admin-auth"
 
 function normalizeAmount(input: number | string) {
     const parsed = Number.parseFloat(String(input))
@@ -25,10 +26,7 @@ export async function createPaymentOrder(amountInput: number | string, payeeInpu
         return { success: false, error: 'payment.invalidAmount' }
     }
 
-    const adminUsers = (process.env.ADMIN_USERS || '')
-        .split(',')
-        .map((name) => name.trim())
-        .filter(Boolean)
+    const adminUsers = getAdminUsernames()
     const fallbackPayee = adminUsers[0] || null
     const payeeCandidate = (payeeInput || '').trim()
     const matchedAdmin = payeeCandidate
@@ -51,7 +49,8 @@ export async function createPaymentOrder(amountInput: number | string, payeeInpu
             username: user?.username || null,
             payee,
             status: 'pending',
-            currentPaymentId: orderId
+            currentPaymentId: orderId,
+            createdAt: new Date()
         })
     })
 

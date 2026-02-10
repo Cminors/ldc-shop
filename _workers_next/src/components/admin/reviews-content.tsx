@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from "react"
+import { useMemo, useRef, useState } from "react"
 import { useI18n } from "@/lib/i18n/context"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Button } from "@/components/ui/button"
@@ -26,6 +26,8 @@ export function AdminReviewsContent({ reviews }: { reviews: ReviewRow[] }) {
   const { t } = useI18n()
   const [items, setItems] = useState(reviews)
   const [query, setQuery] = useState("")
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const deletingRef = useRef<number | null>(null)
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase()
@@ -46,13 +48,19 @@ export function AdminReviewsContent({ reviews }: { reviews: ReviewRow[] }) {
   }, [items, query])
 
   const handleDelete = async (id: number) => {
+    if (deletingRef.current === id) return
     if (!confirm(t('common.confirm') + '?')) return
     try {
+      deletingRef.current = id
+      setDeletingId(id)
       await deleteReview(id)
       setItems((prev) => prev.filter((r) => r.id !== id))
       toast.success(t('common.success'))
     } catch (e: any) {
       toast.error(e.message)
+    } finally {
+      setDeletingId(null)
+      deletingRef.current = null
     }
   }
 
@@ -109,7 +117,7 @@ export function AdminReviewsContent({ reviews }: { reviews: ReviewRow[] }) {
                   <ClientDate value={r.createdAt} format="dateTime" />
                 </TableCell>
                 <TableCell className="text-right">
-                  <Button variant="destructive" size="sm" onClick={() => handleDelete(r.id)}>
+                  <Button variant="destructive" size="sm" onClick={() => handleDelete(r.id)} disabled={deletingId === r.id}>
                     {t('common.delete')}
                   </Button>
                 </TableCell>

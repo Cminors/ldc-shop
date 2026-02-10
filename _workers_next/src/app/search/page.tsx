@@ -1,7 +1,8 @@
-import { searchActiveProducts, getCategories } from "@/lib/db/queries"
+import { searchActiveProducts, getCategories, getLiveCardStats } from "@/lib/db/queries"
 import { SearchContent } from "@/components/search-content"
-
-export const dynamic = 'force-dynamic';
+import { unstable_noStore } from "next/cache"
+import { auth } from "@/lib/auth"
+import { INFINITE_STOCK } from "@/lib/constants"
 
 function firstParam(value: string | string[] | undefined): string | undefined {
   if (!value) return undefined
@@ -16,6 +17,7 @@ function parseIntParam(value: unknown, fallback: number) {
 export default async function SearchPage(props: {
   searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
+  unstable_noStore()
   const searchParams = await props.searchParams
   const q = (firstParam(searchParams.q) || '').trim()
   const category = (firstParam(searchParams.category) || 'all').trim()
@@ -23,10 +25,16 @@ export default async function SearchPage(props: {
   const page = parseIntParam(firstParam(searchParams.page), 1)
   const pageSize = Math.min(parseIntParam(firstParam(searchParams.pageSize), 24), 60)
 
+  const session = await auth()
+  const isLoggedIn = !!session?.user
+  const trustLevel = Number.isFinite(Number(session?.user?.trustLevel)) ? Number(session?.user?.trustLevel) : 0
+
   const [result, categories] = await Promise.all([
-    searchActiveProducts({ q, category, sort, page, pageSize }),
+    searchActiveProducts({ q, category, sort, page, pageSize, isLoggedIn, trustLevel }),
     getCategories(),
   ])
+
+  const liveStats = await getLiveCardStats(result.items.map((p: any) => p.id)).catch(() => new Map())
 
   return (
     <SearchContent
@@ -36,7 +44,14 @@ export default async function SearchPage(props: {
       page={result.page}
       pageSize={result.pageSize}
       total={result.total}
-      products={result.items.map((p: any) => ({
+      products={result.items.map((p: any) => {
+        const stat = liveStats.get(p.id) || { unused: 0, available: 0, locked: 0 }
+        const available = p.isShared
+          ? (stat.unused > 0 ? INFINITE_STOCK : 0)
+          : stat.available
+        const locked = stat.locked
+        const stockCount = available >= INFINITE_STOCK ? INFINITE_STOCK : (available + locked)
+        return {
         id: p.id,
         name: p.name,
         description: p.description,
@@ -45,11 +60,10 @@ export default async function SearchPage(props: {
         image: p.image,
         category: p.category,
         isHot: p.isHot ?? false,
-        stockCount: p.stock,
+        stockCount,
         soldCount: p.sold || 0
-      }))}
+      }})}
       categories={categories.map((c: any) => ({ name: c.name, icon: c.icon, sortOrder: c.sortOrder }))}
     />
   )
 }
-

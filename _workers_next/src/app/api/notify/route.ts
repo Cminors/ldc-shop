@@ -4,11 +4,22 @@ import { md5 } from "@/lib/crypto";
 import { eq, sql } from "drizzle-orm";
 import { withOrderColumnFallback } from "@/lib/db/queries";
 
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
+const LOG_NOTIFY_DETAILS = process.env.NODE_ENV !== 'production';
+
+function summarizeNotifyParams(params: Record<string, any>) {
+    return {
+        out_trade_no: params.out_trade_no,
+        trade_status: params.trade_status,
+        money: params.money
+    }
+}
 
 async function processNotify(params: Record<string, any>) {
-    console.log("[Notify] Processing params:", JSON.stringify(params));
+    if (LOG_NOTIFY_DETAILS) {
+        console.log("[Notify] Processing params:", JSON.stringify(params));
+    } else {
+        console.log("[Notify] Processing:", summarizeNotifyParams(params));
+    }
 
     // Verify Sign
     const sign = params.sign;
@@ -20,7 +31,11 @@ async function processNotify(params: Record<string, any>) {
 
     const mySign = md5(`${sorted}${process.env.MERCHANT_KEY}`);
 
-    console.log("[Notify] Signature check - received:", sign, "computed:", mySign);
+    if (LOG_NOTIFY_DETAILS) {
+        console.log("[Notify] Signature check - received:", sign, "computed:", mySign);
+    } else {
+        console.log("[Notify] Signature check");
+    }
 
     if (sign !== mySign) {
         console.log("[Notify] Signature mismatch!");
@@ -38,7 +53,7 @@ async function processNotify(params: Record<string, any>) {
 
         const tradeNo = params.trade_no;
 
-        console.log("[Notify] Processing order:", orderId, "(original:", params.out_trade_no, ")");
+        console.log("[Notify] Processing order:", orderId);
 
         // Find Order
         const order = await withOrderColumnFallback(async () => {

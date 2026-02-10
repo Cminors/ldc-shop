@@ -2,12 +2,13 @@ import { auth } from "@/lib/auth"
 import { redirect } from "next/navigation"
 import { db } from "@/lib/db"
 import { orders, loginUsers } from "@/lib/db/schema"
-import { eq, desc, sql } from "drizzle-orm"
+import { eq, sql } from "drizzle-orm"
+import { getLoginUserEmail, getLoginUserDesktopNotificationsEnabled, getSetting, getUserNotifications } from "@/lib/db/queries"
 import { ProfileContent } from "@/components/profile-content"
-
-export const dynamic = 'force-dynamic'
+import { unstable_noStore } from "next/cache"
 
 export default async function ProfilePage() {
+    unstable_noStore()
     const session = await auth()
     
     if (!session?.user?.id) {
@@ -18,6 +19,9 @@ export default async function ProfilePage() {
 
     // Get user points
     let userPoints = 0
+    let profileEmail: string | null = null
+    let checkinEnabled = true
+    let desktopNotificationsEnabled = false
     try {
         const userResult = await db.select({ points: loginUsers.points })
             .from(loginUsers)
@@ -26,6 +30,23 @@ export default async function ProfilePage() {
         userPoints = userResult[0]?.points || 0
     } catch {
         userPoints = 0
+    }
+
+    try {
+        profileEmail = await getLoginUserEmail(userId)
+    } catch {
+        profileEmail = null
+    }
+    try {
+        desktopNotificationsEnabled = await getLoginUserDesktopNotificationsEnabled(userId)
+    } catch {
+        desktopNotificationsEnabled = false
+    }
+    try {
+        const v = await getSetting('checkin_enabled')
+        checkinEnabled = v !== 'false'
+    } catch {
+        checkinEnabled = true
     }
 
     // Get order statistics
@@ -50,28 +71,29 @@ export default async function ProfilePage() {
         // Ignore errors
     }
 
-    // Get recent orders (last 5)
-    let recentOrders: Array<{
-        orderId: string
-        productName: string
-        amount: string
-        status: string | null
-        createdAt: Date | null
+    // Get recent notifications
+    let notifications: Array<{
+        id: number
+        type: string
+        titleKey: string
+        contentKey: string
+        data: string | null
+        isRead: boolean | null
+        createdAt: number | null
     }> = []
     try {
-        recentOrders = await db.select({
-            orderId: orders.orderId,
-            productName: orders.productName,
-            amount: orders.amount,
-            status: orders.status,
-            createdAt: orders.createdAt
-        })
-            .from(orders)
-            .where(eq(orders.userId, userId))
-            .orderBy(desc(orders.createdAt))
-            .limit(5)
+        const rows = await getUserNotifications(userId, 20)
+        notifications = rows.map((n) => ({
+            id: n.id,
+            type: n.type,
+            titleKey: n.titleKey,
+            contentKey: n.contentKey,
+            data: n.data,
+            isRead: n.isRead,
+            createdAt: n.createdAt ? new Date(n.createdAt as any).getTime() : null
+        }))
     } catch {
-        // Ignore errors
+        notifications = []
     }
 
     return (
@@ -80,11 +102,15 @@ export default async function ProfilePage() {
                 id: session.user.id,
                 name: session.user.name || session.user.username || "User",
                 username: session.user.username || null,
-                avatar: session.user.avatar_url || null
+                avatar: session.user.avatar_url || null,
+                email: profileEmail || session.user.email || null,
+                trustLevel: session.user.trustLevel ?? 0
             }}
             points={userPoints}
+            checkinEnabled={checkinEnabled}
             orderStats={orderStats}
-            recentOrders={recentOrders}
+            notifications={notifications}
+            desktopNotificationsEnabled={desktopNotificationsEnabled}
         />
     )
 }

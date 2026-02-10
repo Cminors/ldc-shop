@@ -7,7 +7,9 @@ import { revalidatePath } from "next/cache"
 import { db } from "@/lib/db"
 import { orders, cards } from "@/lib/db/schema"
 import { eq } from "drizzle-orm"
-import { withOrderColumnFallback } from "@/lib/db/queries"
+import { withOrderColumnFallback, recalcProductAggregates } from "@/lib/db/queries"
+import { cookies } from "next/headers"
+import { updateTag } from "next/cache"
 
 export async function checkOrderStatus(orderId: string) {
     const session = await auth()
@@ -26,8 +28,16 @@ export async function checkOrderStatus(orderId: string) {
         return { success: true, status: order.status }
     }
 
+    const cookieStore = await cookies()
+    const pending = cookieStore.get('ldc_pending_order')?.value
+    const hasPendingCookie = pending === orderId
+
     // Allow checking if user owns it OR if they have the pending cookie
-    if (order.userId && order.userId !== session.user.id) {
+    if (order.userId) {
+        if (order.userId !== session.user.id && !hasPendingCookie) {
+            return { success: false, error: 'Unauthorized' }
+        }
+    } else if (!hasPendingCookie) {
         return { success: false, error: 'Unauthorized' }
     }
 
@@ -65,7 +75,7 @@ export async function cancelPendingOrder(orderId: string) {
     const order = await withOrderColumnFallback(async () => {
         return await db.query.orders.findFirst({
             where: eq(orders.orderId, orderId),
-            columns: { userId: true, status: true }
+            columns: { userId: true, status: true, productId: true }
         })
     })
 
@@ -86,6 +96,18 @@ export async function cancelPendingOrder(orderId: string) {
 
         revalidatePath(`/order/${orderId}`)
         revalidatePath('/orders')
+        if (order.productId) {
+            try {
+                await recalcProductAggregates(order.productId)
+            } catch {
+                // best effort
+            }
+        }
+        try {
+            updateTag('home:products')
+        } catch {
+            // best effort
+        }
         
         return { success: true }
     } catch (e: any) {

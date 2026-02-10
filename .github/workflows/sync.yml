@@ -54,8 +54,22 @@ jobs:
               if (userWrangler) {
                 fs.writeFileSync(wranglerPath, userWrangler);
                 await exec.exec('git', ['add', wranglerPath]);
-                await exec.exec('git', ['commit', '-m', 'chore: preserve user wrangler.json config']);
-                console.log('✅ Restored user wrangler.json with D1 config');
+                
+                // Check if there are actual changes to commit
+                let hasChanges = false;
+                try {
+                  await exec.exec('git', ['diff', '--cached', '--quiet']);
+                } catch (e) {
+                  // git diff --quiet returns exit code 1 if there are changes
+                  hasChanges = true;
+                }
+                
+                if (hasChanges) {
+                  await exec.exec('git', ['commit', '-m', 'chore: preserve user wrangler.json config']);
+                  console.log('✅ Restored user wrangler.json with D1 config');
+                } else {
+                  console.log('ℹ️ User wrangler.json is identical to upstream, no commit needed');
+                }
               }
 
               // Force Push

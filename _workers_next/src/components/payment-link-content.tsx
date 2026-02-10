@@ -26,14 +26,14 @@ export function PaymentLinkContent({ payee }: { payee?: string | null }) {
         setSubmitting(true)
         try {
             const result = await createPaymentOrder(numeric, payee)
-            if (!result?.success || !result.url || !result.params) {
+            if (!result?.success || !result.params) {
                 toast.error(result?.error ? t(result.error) : t('common.error'))
                 return
             }
 
             const form = document.createElement('form')
             form.method = 'POST'
-            form.action = result.url
+            form.action = '/paying'
 
             Object.entries(result.params).forEach(([k, v]) => {
                 const input = document.createElement('input')

@@ -6,8 +6,18 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
-import { Coins, Package, Clock, CheckCircle, ChevronRight, User, LogOut } from "lucide-react"
+import { Coins, Package, Clock, CheckCircle, ChevronRight, User, LogOut, Bell } from "lucide-react"
 import { signOut } from "next-auth/react"
+import { Input } from "@/components/ui/input"
+import { Textarea } from "@/components/ui/textarea"
+import { Label } from "@/components/ui/label"
+import { toast } from "sonner"
+import { updateDesktopNotifications, updateProfileEmail } from "@/actions/profile"
+import { useEffect, useRef, useState } from "react"
+import { CheckInButton } from "@/components/checkin-button"
+import { clearMyNotifications, getMyNotifications, markAllNotificationsRead, markNotificationRead } from "@/actions/user-notifications"
+import { sendUserMessage } from "@/actions/user-messages"
+import { cn } from "@/lib/utils"
 
 interface ProfileContentProps {
     user: {
@@ -15,39 +25,159 @@ interface ProfileContentProps {
         name: string
         username: string | null
         avatar: string | null
+        email: string | null
+        trustLevel?: number
     }
     points: number
+    checkinEnabled: boolean
     orderStats: {
         total: number
         pending: number
         delivered: number
     }
-    recentOrders: Array<{
-        orderId: string
-        productName: string
-        amount: string
-        status: string | null
-        createdAt: Date | null
+    notifications: Array<{
+        id: number
+        type: string
+        titleKey: string
+        contentKey: string
+        data: string | null
+        isRead: boolean | null
+        createdAt: number | null
     }>
+    desktopNotificationsEnabled: boolean
 }
 
-export function ProfileContent({ user, points, orderStats, recentOrders }: ProfileContentProps) {
+export function ProfileContent({ user, points, checkinEnabled, orderStats, notifications: initialNotifications, desktopNotificationsEnabled }: ProfileContentProps) {
     const { t } = useI18n()
+    const [email, setEmail] = useState(user.email || '')
+    const [savingEmail, setSavingEmail] = useState(false)
+    const [pointsValue, setPointsValue] = useState(points)
+    const [notifications, setNotifications] = useState(initialNotifications)
+    const [markingAll, setMarkingAll] = useState(false)
+    const [markingId, setMarkingId] = useState<number | null>(null)
+    const [clearing, setClearing] = useState(false)
+    const [expandedIds, setExpandedIds] = useState<number[]>([])
+    const [msgTitle, setMsgTitle] = useState("")
+    const [msgBody, setMsgBody] = useState("")
+    const [msgSending, setMsgSending] = useState(false)
+    const [desktopEnabled, setDesktopEnabled] = useState(desktopNotificationsEnabled)
+    const [desktopSaving, setDesktopSaving] = useState(false)
+    const notifiedIdsRef = useRef<Set<number>>(new Set())
 
-    const getStatusBadge = (status: string | null) => {
-        switch (status) {
-            case 'pending':
-                return <Badge variant="outline" className="text-yellow-600 border-yellow-600">{t('order.status.pending')}</Badge>
-            case 'paid':
-                return <Badge variant="outline" className="text-blue-600 border-blue-600">{t('order.status.paid')}</Badge>
-            case 'delivered':
-                return <Badge variant="outline" className="text-green-600 border-green-600">{t('order.status.delivered')}</Badge>
-            case 'refunded':
-                return <Badge variant="outline" className="text-gray-600 border-gray-600">{t('order.status.refunded')}</Badge>
-            case 'cancelled':
-                return <Badge variant="outline" className="text-red-600 border-red-600">{t('order.status.cancelled')}</Badge>
-            default:
-                return <Badge variant="outline">{status || '-'}</Badge>
+    const unreadCount = notifications.filter((n) => !n.isRead).length
+
+    const parseNotificationData = (data: string | null) => {
+        if (!data) return {}
+        try {
+            return JSON.parse(data) as { params?: Record<string, string | number>; href?: string }
+        } catch {
+            return {}
+        }
+    }
+
+    const emitNotificationUpdate = () => {
+        if (typeof window !== "undefined") {
+            window.dispatchEvent(new CustomEvent("ldc:notifications-updated"))
+        }
+    }
+
+    const handleMarkRead = async (id: number) => {
+        if (markingId === id) return
+        setMarkingId(id)
+        setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)))
+        try {
+            const res = await markNotificationRead(id)
+            if (!res?.success) {
+                // revert if failed
+                setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: false } : n)))
+            }
+            emitNotificationUpdate()
+        } catch {
+            setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: false } : n)))
+        } finally {
+            setMarkingId(null)
+        }
+    }
+
+    useEffect(() => {
+        const refresh = async () => {
+            try {
+                const res = await getMyNotifications()
+                if (res?.success && res.items) {
+                    setNotifications(res.items)
+                }
+            } catch {
+                // ignore refresh failures
+            }
+        }
+        refresh()
+    }, [])
+
+    useEffect(() => {
+        if (!desktopEnabled) return
+        if (typeof window === "undefined" || !("Notification" in window)) return
+        if (Notification.permission !== "granted") return
+
+        const unread = notifications.filter((n) => !n.isRead)
+        const fresh = unread.filter((n) => !notifiedIdsRef.current.has(n.id))
+        if (!fresh.length) return
+
+        fresh.slice(0, 3).forEach((n) => {
+            const data = parseNotificationData(n.data)
+            const params = data.params || {}
+            const title = t(n.titleKey, params)
+            const body = t(n.contentKey, params)
+            new Notification(title, { body })
+            notifiedIdsRef.current.add(n.id)
+        })
+    }, [desktopEnabled, notifications, t])
+
+    const ensureNotificationPermission = async () => {
+        if (typeof window === "undefined" || !("Notification" in window)) {
+            toast.error(t('profile.desktopNotifications.unsupported'))
+            return false
+        }
+        if (Notification.permission === "granted") return true
+        if (Notification.permission === "denied") {
+            toast.error(t('profile.desktopNotifications.permissionDenied'))
+            return false
+        }
+        const permission = await Notification.requestPermission()
+        if (permission !== "granted") {
+            toast.error(t('profile.desktopNotifications.permissionDenied'))
+            return false
+        }
+        return true
+    }
+
+    const handleToggleDesktopNotifications = async () => {
+        if (desktopSaving) return
+        const next = !desktopEnabled
+        if (next) {
+            const ok = await ensureNotificationPermission()
+            if (!ok) return
+        }
+        setDesktopSaving(true)
+        try {
+            const res = await updateDesktopNotifications(next)
+            if (res?.success) {
+                setDesktopEnabled(next)
+                toast.success(next ? t('profile.desktopNotifications.enabledToast') : t('profile.desktopNotifications.disabledToast'))
+                if (next) {
+                    notifiedIdsRef.current = new Set(notifications.map((n) => n.id))
+                }
+                if (next && typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+                    new Notification(t('profile.desktopNotifications.testTitle'), {
+                        body: t('profile.desktopNotifications.testBody')
+                    })
+                }
+            } else {
+                toast.error(res?.error ? t(res.error) : t('common.error'))
+            }
+        } catch {
+            toast.error(t('common.error'))
+        } finally {
+            setDesktopSaving(false)
         }
     }
 
@@ -66,8 +196,75 @@ export function ProfileContent({ user, points, orderStats, recentOrders }: Profi
                             {user.username && (
                                 <p className="text-sm text-muted-foreground">@{user.username}</p>
                             )}
-                            <p className="text-xs text-muted-foreground mt-1">ID: {user.id}</p>
+                            <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                <span>ID: {user.id}</span>
+                                <Badge variant="outline" className="text-xs">{t('profile.trustLevel')}: {Number.isFinite(Number(user.trustLevel)) ? user.trustLevel : 0}</Badge>
+                            </div>
                         </div>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Email */}
+            <Card className="mb-6">
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-base">{t('profile.emailTitle')}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="floating-field">
+                        <Input
+                            id="profile-email"
+                            type="email"
+                            placeholder=" "
+                            value={email}
+                            onChange={(e) => setEmail(e.target.value)}
+                            disabled={savingEmail}
+                        />
+                        <Label htmlFor="profile-email" className="floating-label">{t('profile.emailLabel')}</Label>
+                        <p className="text-xs text-muted-foreground">{t('profile.emailHint')}</p>
+                        <Button
+                            variant="outline"
+                            className="mt-2"
+                            disabled={savingEmail}
+                            onClick={async () => {
+                                setSavingEmail(true)
+                                try {
+                                    const result = await updateProfileEmail(email)
+                                    if (result?.success) {
+                                        toast.success(t('profile.emailSaved'))
+                                    } else {
+                                        toast.error(result?.error ? t(result.error) : t('common.error'))
+                                    }
+                                } catch {
+                                    toast.error(t('common.error'))
+                                } finally {
+                                    setSavingEmail(false)
+                                }
+                            }}
+                        >
+                            {t('profile.emailSave')}
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
+
+            {/* Desktop Notifications */}
+            <Card className="mb-6">
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-base">{t('profile.desktopNotifications.title')}</CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <div className="flex items-center justify-between gap-4">
+                        <p className="text-sm text-muted-foreground">{t('profile.desktopNotifications.desc')}</p>
+                        <Button
+                            type="button"
+                            variant={desktopEnabled ? "default" : "outline"}
+                            size="sm"
+                            onClick={handleToggleDesktopNotifications}
+                            disabled={desktopSaving}
+                        >
+                            {desktopEnabled ? t('profile.desktopNotifications.enabled') : t('profile.desktopNotifications.disabled')}
+                        </Button>
                     </div>
                 </CardContent>
             </Card>
@@ -82,9 +279,16 @@ export function ProfileContent({ user, points, orderStats, recentOrders }: Profi
                             </div>
                             <div>
                                 <p className="text-sm text-muted-foreground">{t('common.credits')}</p>
-                                <p className="text-2xl font-bold text-amber-600">{points}</p>
+                                <p className="text-2xl font-bold text-amber-600">{pointsValue}</p>
                             </div>
                         </div>
+                        <CheckInButton
+                            enabled={checkinEnabled}
+                            showPoints={false}
+                            showCheckedInLabel
+                            className="shrink-0"
+                            onPointsChange={setPointsValue}
+                        />
                     </div>
                 </CardContent>
             </Card>
@@ -122,36 +326,201 @@ export function ProfileContent({ user, points, orderStats, recentOrders }: Profi
                 </CardContent>
             </Card>
 
-            {/* Recent Orders */}
-            {recentOrders.length > 0 && (
-                <Card className="mb-6">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-base">{t('admin.stats.recentOrders')}</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="space-y-3">
-                            {recentOrders.map((order) => (
-                                <Link
-                                    key={order.orderId}
-                                    href={`/order/${order.orderId}`}
-                                    className="flex items-center justify-between p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors"
+            {/* Inbox */}
+            <Card className="mb-6">
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-base flex items-center justify-between">
+                        <span className="flex items-center gap-2">
+                            <Bell className="h-4 w-4 text-muted-foreground" />
+                            {t('profile.inboxTitle')}
+                            {unreadCount > 0 && (
+                                <span className="inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 text-[10px] font-medium text-white px-1">
+                                    {unreadCount > 99 ? "99+" : unreadCount}
+                                </span>
+                            )}
+                        </span>
+                        {notifications.length > 0 && (
+                            <div className="flex items-center gap-2">
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={markingAll || unreadCount === 0}
+                                    onClick={async () => {
+                                        if (markingAll || unreadCount === 0) return
+                                        setMarkingAll(true)
+                                        try {
+                                            const res = await markAllNotificationsRead()
+                                            if (res?.success) {
+                                                setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })))
+                                                emitNotificationUpdate()
+                                                toast.success(t('profile.inboxMarked'))
+                                            } else {
+                                                toast.error(t('common.error'))
+                                            }
+                                        } catch {
+                                            toast.error(t('common.error'))
+                                        } finally {
+                                            setMarkingAll(false)
+                                        }
+                                    }}
                                 >
-                                    <div className="flex-1 min-w-0">
-                                        <p className="font-medium truncate">{order.productName}</p>
-                                        <p className="text-xs text-muted-foreground">
-                                            {order.createdAt ? new Date(order.createdAt).toLocaleDateString() : '-'}
-                                        </p>
+                                    {t('profile.markAllRead')}
+                                </Button>
+                                <Button
+                                    variant="ghost"
+                                    size="sm"
+                                    disabled={clearing}
+                                    onClick={async () => {
+                                        if (clearing) return
+                                        setClearing(true)
+                                        try {
+                                            const res = await clearMyNotifications()
+                                            if (res?.success) {
+                                                setNotifications([])
+                                                emitNotificationUpdate()
+                                                toast.success(t('profile.inboxCleared'))
+                                            } else {
+                                                toast.error(t('common.error'))
+                                            }
+                                        } catch {
+                                            toast.error(t('common.error'))
+                                        } finally {
+                                            setClearing(false)
+                                        }
+                                    }}
+                                >
+                                    {t('profile.clearInbox')}
+                                </Button>
+                            </div>
+                        )}
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    {notifications.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">{t('profile.inboxEmpty')}</p>
+                    ) : (
+                        <div className="space-y-3">
+                            {notifications.map((n) => {
+                                const meta = parseNotificationData(n.data)
+                                const params = meta.params || {}
+                                const title = typeof (meta as any).title === "string" && (meta as any).title.trim()
+                                    ? (meta as any).title
+                                    : t(n.titleKey, params)
+                                const content = typeof (meta as any).body === "string" && (meta as any).body.trim()
+                                    ? (meta as any).body
+                                    : t(n.contentKey, params)
+                                const time = n.createdAt ? new Date(n.createdAt).toLocaleString() : '-'
+                                const isExpanded = expandedIds.includes(n.id)
+                                const contentClass = cn(
+                                    "text-sm text-muted-foreground mt-1 break-words whitespace-pre-wrap",
+                                    !isExpanded ? "line-clamp-2" : ""
+                                )
+                                const body = (
+                                    <div className={`rounded-lg border p-3 ${n.isRead ? "bg-muted/30" : "bg-primary/5 border-primary/30"}`}>
+                                        <div className="flex items-start justify-between gap-3">
+                                            <div className="min-w-0 flex-1">
+                                                <div className="flex items-center gap-2">
+                                                    <span className="font-medium">{title}</span>
+                                                    {!n.isRead && (
+                                                        <Badge variant="outline" className="text-[10px] text-primary border-primary/50">
+                                                            {t('profile.unread')}
+                                                        </Badge>
+                                                    )}
+                                                </div>
+                                                <p className={contentClass}>{content}</p>
+                                                <p className="text-xs text-muted-foreground mt-2">{time}</p>
+                                            </div>
+                                            {meta.href && (
+                                                <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
+                                            )}
+                                        </div>
                                     </div>
-                                    <div className="flex items-center gap-2">
-                                        <span className="text-sm font-medium">{order.amount}</span>
-                                        {getStatusBadge(order.status)}
+                                )
+
+                                return meta.href ? (
+                                    <Link
+                                        key={n.id}
+                                        href={meta.href}
+                                        className="block"
+                                        onClick={() => {
+                                            if (!n.isRead) void handleMarkRead(n.id)
+                                        }}
+                                    >
+                                        {body}
+                                    </Link>
+                                ) : (
+                                    <div
+                                        key={n.id}
+                                        onClick={() => {
+                                            if (!n.isRead) void handleMarkRead(n.id)
+                                            setExpandedIds((prev) =>
+                                                prev.includes(n.id) ? prev.filter((x) => x !== n.id) : [...prev, n.id]
+                                            )
+                                        }}
+                                    >
+                                        {body}
                                     </div>
-                                </Link>
-                            ))}
+                                )
+                            })}
                         </div>
-                    </CardContent>
-                </Card>
-            )}
+                    )}
+                </CardContent>
+            </Card>
+
+            {/* Contact Admin */}
+            <Card className="mb-6">
+                <CardHeader className="pb-2">
+                    <CardTitle className="text-base">{t('profile.messages.title')}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                    <div className="grid gap-2">
+                        <Label htmlFor="msg-title">{t('profile.messages.titleLabel')}</Label>
+                        <Input
+                            id="msg-title"
+                            value={msgTitle}
+                            onChange={(e) => setMsgTitle(e.target.value)}
+                            placeholder={t('profile.messages.titlePlaceholder')}
+                            disabled={msgSending}
+                        />
+                    </div>
+                    <div className="grid gap-2">
+                        <Label htmlFor="msg-body">{t('profile.messages.bodyLabel')}</Label>
+                        <Textarea
+                            id="msg-body"
+                            className="min-h-[120px]"
+                            placeholder={t('profile.messages.bodyPlaceholder')}
+                            value={msgBody}
+                            onChange={(e) => setMsgBody(e.target.value)}
+                            disabled={msgSending}
+                        />
+                    </div>
+                    <div className="flex justify-end">
+                        <Button
+                            disabled={msgSending}
+                            onClick={async () => {
+                                if (msgSending) return
+                                setMsgSending(true)
+                                try {
+                                    const res = await sendUserMessage(msgTitle, msgBody)
+                                    if (res?.success) {
+                                        toast.success(t('profile.messages.sent'))
+                                        setMsgTitle("")
+                                        setMsgBody("")
+                                    } else {
+                                        toast.error(res?.error ? t(res.error) : t('common.error'))
+                                    }
+                                } catch {
+                                    toast.error(t('common.error'))
+                                } finally {
+                                    setMsgSending(false)
+                                }
+                            }}
+                        >
+                            {msgSending ? t('common.processing') : t('profile.messages.send')}
+                        </Button>
+                    </div>
+                </CardContent>
+            </Card>
 
             {/* Logout Button */}
             <Button

@@ -38,30 +38,29 @@ export function I18nProvider({ children }: { children: ReactNode }) {
         const saved = localStorage.getItem('ldc-locale') as Locale | null
         if (saved && translations[saved]) {
             setLocaleState(saved)
+            document.cookie = `ldc-locale=${saved}; path=/; max-age=31536000`
             return
         }
         // Detect from browser
         const browserLang = navigator.language.toLowerCase()
         if (browserLang.startsWith('zh')) {
             setLocaleState('zh')
+            document.cookie = `ldc-locale=zh; path=/; max-age=31536000`
         } else {
             setLocaleState('en')
+            document.cookie = `ldc-locale=en; path=/; max-age=31536000`
         }
     }, [])
 
     const setLocale = (newLocale: Locale) => {
         setLocaleState(newLocale)
         localStorage.setItem('ldc-locale', newLocale)
+        document.cookie = `ldc-locale=${newLocale}; path=/; max-age=31536000`
     }
 
     const t = (key: string, params?: Record<string, string | number>): string => {
         const text = getNestedValue(translations[locale], key)
         return interpolate(text, params)
-    }
-
-    // Prevent hydration mismatch
-    if (!mounted) {
-        return <>{children}</>
     }
 
     return (

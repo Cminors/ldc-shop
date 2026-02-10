@@ -1,7 +1,7 @@
 'use client'
 
 import Link from "next/link"
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useI18n } from "@/lib/i18n/context"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -30,6 +30,8 @@ export function AdminOrderDetailContent({ order }: { order: any }) {
   const router = useRouter()
   const [email, setEmail] = useState(order.email || '')
   const [savingEmail, setSavingEmail] = useState(false)
+  const [actionLoading, setActionLoading] = useState(false)
+  const actionLock = useRef(false)
 
   const status = order.status || 'pending'
   const canMarkPaid = status === 'pending'
@@ -38,7 +40,10 @@ export function AdminOrderDetailContent({ order }: { order: any }) {
   const canDelete = true
 
   const handleStatus = async (action: 'paid' | 'delivered' | 'cancel') => {
+    if (actionLock.current) return
     try {
+      actionLock.current = true
+      setActionLoading(true)
       if (action === 'paid') {
         if (!confirm(t('admin.orders.confirmMarkPaid'))) return
         await markOrderPaid(order.orderId)
@@ -58,6 +63,9 @@ export function AdminOrderDetailContent({ order }: { order: any }) {
       }
     } catch (e: any) {
       toast.error(e.message)
+    } finally {
+      setActionLoading(false)
+      actionLock.current = false
     }
   }
 
@@ -93,27 +101,34 @@ export function AdminOrderDetailContent({ order }: { order: any }) {
           <CardTitle>{t('admin.orders.detail')}</CardTitle>
           <div className="flex items-center gap-2">
             {canMarkPaid && (
-              <Button variant="outline" onClick={() => handleStatus('paid')}>{t('admin.orders.markPaid')}</Button>
+              <Button variant="outline" onClick={() => handleStatus('paid')} disabled={actionLoading}>{t('admin.orders.markPaid')}</Button>
             )}
             {canMarkDelivered && (
-              <Button variant="outline" onClick={() => handleStatus('delivered')}>{t('admin.orders.markDelivered')}</Button>
+              <Button variant="outline" onClick={() => handleStatus('delivered')} disabled={actionLoading}>{t('admin.orders.markDelivered')}</Button>
             )}
             {canCancel && (
-              <Button variant="destructive" onClick={() => handleStatus('cancel')}>{t('admin.orders.cancel')}</Button>
+              <Button variant="destructive" onClick={() => handleStatus('cancel')} disabled={actionLoading}>{t('admin.orders.cancel')}</Button>
             )}
             {canDelete && (
               <Button
                 variant="destructive"
                 onClick={async () => {
+                  if (actionLock.current) return
                   if (!confirm(t('admin.orders.confirmDelete'))) return
+                  actionLock.current = true
+                  setActionLoading(true)
                   try {
                     await deleteOrder(order.orderId)
                     toast.success(t('common.success'))
                     router.push('/admin/orders')
                   } catch (e: any) {
                     toast.error(e.message)
+                  } finally {
+                    setActionLoading(false)
+                    actionLock.current = false
                   }
                 }}
+                disabled={actionLoading}
               >
                 {t('admin.orders.delete')}
               </Button>

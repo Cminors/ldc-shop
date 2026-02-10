@@ -1,7 +1,6 @@
 import { PaymentLinkContent } from "@/components/payment-link-content"
 import { md5 } from "@/lib/crypto"
-
-export const dynamic = 'force-dynamic'
+import { unstable_noStore } from "next/cache"
 
 function firstParam(value: string | string[] | undefined): string | undefined {
     if (!value) return undefined
@@ -11,6 +10,7 @@ function firstParam(value: string | string[] | undefined): string | undefined {
 export default async function PaymentLinkPage(props: {
     searchParams: Promise<Record<string, string | string[] | undefined>>
 }) {
+    unstable_noStore()
     const searchParams = await props.searchParams
     const payeeParam = (firstParam(searchParams.to) || '').trim()
     const sigParam = (firstParam(searchParams.sig) || '').trim()

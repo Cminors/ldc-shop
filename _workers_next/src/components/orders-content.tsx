@@ -103,7 +103,7 @@ export function OrdersContent({ orders }: { orders: Order[] }) {
                     filtered.map(order => (
                         <Card key={order.orderId} className="hover:border-primary/50 transition-colors">
                             <Link href={`/order/${order.orderId}`}>
-                                <div className="flex items-center p-6 gap-4">
+                                <div className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center">
                                     <div className="h-12 w-12 rounded-full bg-muted flex items-center justify-center shrink-0">
                                         {isPaymentOrder(order.productId) ? (
                                             <CreditCard className="h-6 w-6 text-muted-foreground" />
@@ -112,31 +112,31 @@ export function OrdersContent({ orders }: { orders: Order[] }) {
                                         )}
                                     </div>
                                     <div className="flex-1 min-w-0">
-                                        <div className="flex items-center justify-between mb-1">
+                                        <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
                                             <h3 className="font-semibold truncate">{getOrderName(order)}</h3>
-                                            <span className="font-bold">{Number(order.amount)} {t('common.credits')}</span>
+                                            <span className="font-bold shrink-0">{Number(order.amount)} {t('common.credits')}</span>
                                         </div>
-                                        <div className="flex items-center justify-between text-sm text-muted-foreground">
-                                            <span className="font-mono">{order.orderId}</span>
+                                        <div className="flex flex-col gap-1 text-sm text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
+                                            <span className="font-mono truncate">{order.orderId}</span>
                                             <ClientDate value={order.createdAt} />
                                         </div>
-                                    </div>
-                                    <div className="flex items-center gap-2 ml-2">
-                                        {order.canReview && !isPaymentOrder(order.productId) && (
-                                            <Link 
-                                                href={`/buy/${order.productId}#reviews`}
-                                                onClick={(e) => e.stopPropagation()}
-                                                className="shrink-0"
-                                            >
-                                                <Button size="sm" variant="outline" className="gap-1">
-                                                    <Star className="h-3 w-3" />
-                                                    {t('orders.writeReview')}
-                                                </Button>
-                                            </Link>
-                                        )}
-                                        <Badge variant={getStatusBadgeVariant(order.status)} className="capitalize shrink-0">
-                                            {getStatusText(order.status)}
-                                        </Badge>
+                                        <div className="mt-2 flex flex-wrap items-center gap-2 sm:justify-end">
+                                            {order.canReview && !isPaymentOrder(order.productId) && (
+                                                <Link
+                                                    href={`/buy/${order.productId}#reviews`}
+                                                    onClick={(e) => e.stopPropagation()}
+                                                    className="shrink-0"
+                                                >
+                                                    <Button size="sm" variant="outline" className="gap-1">
+                                                        <Star className="h-3 w-3" />
+                                                        {t('orders.writeReview')}
+                                                    </Button>
+                                                </Link>
+                                            )}
+                                            <Badge variant={getStatusBadgeVariant(order.status)} className="capitalize shrink-0">
+                                                {getStatusText(order.status)}
+                                            </Badge>
+                                        </div>
                                     </div>
                                 </div>
                             </Link>

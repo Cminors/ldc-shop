@@ -3,8 +3,9 @@
 import { auth } from '@/lib/auth'
 import { createReview } from '@/lib/db/queries'
 import { db } from '@/lib/db'
-import { sql } from 'drizzle-orm'
-import { revalidatePath } from 'next/cache'
+import { orders } from '@/lib/db/schema'
+import { eq, sql } from 'drizzle-orm'
+import { revalidatePath, updateTag } from 'next/cache'
 
 export async function submitReview(
     productId: string,
@@ -15,12 +16,43 @@ export async function submitReview(
     try {
         const session = await auth()
         if (!session?.user) {
-            return { success: false, error: 'Not authenticated' }
+            return { success: false, error: 'review.authRequired' }
         }
 
         // Validate rating
         if (rating < 1 || rating > 5) {
-            return { success: false, error: 'Invalid rating' }
+            return { success: false, error: 'review.invalidRating' }
+        }
+
+        const order = await db.query.orders.findFirst({
+            where: eq(orders.orderId, orderId),
+            columns: {
+                userId: true,
+                username: true,
+                status: true,
+                productId: true
+            }
+        })
+
+        if (!order) {
+            return { success: false, error: 'review.orderNotFound' }
+        }
+
+        if (order.productId !== productId) {
+            return { success: false, error: 'review.invalidOrder' }
+        }
+
+        const sessionUsername = session.user.username || session.user.name || ''
+        const isOwner =
+            (order.userId && order.userId === session.user.id) ||
+            (order.username && sessionUsername && order.username === sessionUsername)
+
+        if (!isOwner) {
+            return { success: false, error: 'review.notOwner' }
+        }
+
+        if (order.status !== 'delivered') {
+            return { success: false, error: 'review.orderNotDelivered' }
         }
 
         // Ensure reviews table exists
@@ -42,10 +74,10 @@ export async function submitReview(
             SELECT id FROM reviews WHERE order_id = ${orderId} LIMIT 1
         `)
         if (existingReview.results && existingReview.results.length > 0) {
-            return { success: false, error: 'Already reviewed' }
+            return { success: false, error: 'review.alreadyReviewed' }
         }
         if (existingReview.rows && existingReview.rows.length > 0) {
-            return { success: false, error: 'Already reviewed' }
+            return { success: false, error: 'review.alreadyReviewed' }
         }
 
         // Create review
@@ -60,10 +92,13 @@ export async function submitReview(
 
         revalidatePath(`/buy/${productId}`)
         revalidatePath(`/order/${orderId}`)
+        revalidatePath(`/`)
+        updateTag('home:ratings')
+        updateTag('home:products')
 
         return { success: true }
     } catch (error) {
         console.error('Failed to submit review:', error)
-        return { success: false, error: 'Failed to submit review' }
+        return { success: false, error: 'review.submitError' }
     }
 }

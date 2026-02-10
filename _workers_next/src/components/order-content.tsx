@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from "react"
+import { useRef, useState } from "react"
 import { useI18n } from "@/lib/i18n/context"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -10,6 +10,7 @@ import { CopyButton } from "@/components/copy-button"
 import { ClientDate } from "@/components/client-date"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { requestRefund } from "@/actions/refund-requests"
 import { toast } from "sonner"
 import { useEffect } from "react"
@@ -40,7 +41,25 @@ export function OrderContent({ order, canViewKey, isOwner, refundRequest }: Orde
     const { t } = useI18n()
     const [reason, setReason] = useState("")
     const [submitting, setSubmitting] = useState(false)
+    const [confirmOpen, setConfirmOpen] = useState(false)
+    const submitLock = useRef(false)
     const isPayment = isPaymentOrder(order.productId)
+
+    const handleRefundConfirm = async () => {
+        if (submitLock.current) return
+        submitLock.current = true
+        setSubmitting(true)
+        try {
+            await requestRefund(order.orderId, reason)
+            toast.success(t('refund.requested'))
+            setConfirmOpen(false)
+        } catch (e: any) {
+            toast.error(e.message)
+        } finally {
+            setSubmitting(false)
+            submitLock.current = false
+        }
+    }
 
     const getStatusBadgeVariant = (status: string) => {
         switch (status) {
@@ -260,6 +279,8 @@ export function OrderContent({ order, canViewKey, isOwner, refundRequest }: Orde
                                         variant="outline"
                                         onClick={async () => {
                                             if (!confirm(t('order.confirmCancel'))) return
+                                            if (submitLock.current) return
+                                            submitLock.current = true
                                             setSubmitting(true)
                                             try {
                                                 const result = await cancelPendingOrder(order.orderId)
@@ -273,6 +294,7 @@ export function OrderContent({ order, canViewKey, isOwner, refundRequest }: Orde
                                                 toast.error(e.message)
                                             } finally {
                                                 setSubmitting(false)
+                                                submitLock.current = false
                                             }
                                         }}
                                         disabled={submitting}
@@ -282,14 +304,16 @@ export function OrderContent({ order, canViewKey, isOwner, refundRequest }: Orde
                                     <Button
                                         size="sm"
                                         onClick={async () => {
+                                            if (submitLock.current) return
+                                            submitLock.current = true
                                             setSubmitting(true)
                                             try {
                                                 const { getRetryPaymentParams } = await import("@/actions/checkout")
                                                 const result = await getRetryPaymentParams(order.orderId)
-                                                if (result.success && result.url && result.params) {
+                                                if (result.success && result.params) {
                                                     const form = document.createElement('form')
                                                     form.method = 'POST'
-                                                    form.action = result.url
+                                                    form.action = '/paying'
                                                     Object.entries(result.params).forEach(([k, v]) => {
                                                         const input = document.createElement('input')
                                                         input.type = 'hidden'
@@ -306,6 +330,7 @@ export function OrderContent({ order, canViewKey, isOwner, refundRequest }: Orde
                                                 toast.error(e.message)
                                             } finally {
                                                 setSubmitting(false)
+                                                submitLock.current = false
                                             }
                                         }}
                                         disabled={submitting}
@@ -324,7 +349,7 @@ export function OrderContent({ order, canViewKey, isOwner, refundRequest }: Orde
                                 <h3 className="font-semibold">{t('refund.requestTitle')}</h3>
                                 {refundRequest?.status ? (
                                     <div className="text-sm text-muted-foreground">
-                                        {t('refund.requestStatus', { status: refundRequest.status })}
+                                        {t('refund.requestStatus', { status: t(`refund.statusValues.${refundRequest.status}`) })}
                                     </div>
                                 ) : (
                                     <div className="text-sm text-muted-foreground">
@@ -342,15 +367,7 @@ export function OrderContent({ order, canViewKey, isOwner, refundRequest }: Orde
                                 <div className="flex justify-end">
                                     <Button
                                         onClick={async () => {
-                                            setSubmitting(true)
-                                            try {
-                                                await requestRefund(order.orderId, reason)
-                                                toast.success(t('refund.requested'))
-                                            } catch (e: any) {
-                                                toast.error(e.message)
-                                            } finally {
-                                                setSubmitting(false)
-                                            }
+                                            setConfirmOpen(true)
                                         }}
                                         disabled={submitting || !!refundRequest?.status}
                                     >
@@ -362,6 +379,32 @@ export function OrderContent({ order, canViewKey, isOwner, refundRequest }: Orde
                     )}
                 </CardContent>
             </Card>
+
+            <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+                <DialogContent className="sm:max-w-[420px]">
+                    <DialogHeader>
+                        <div className="flex items-center gap-3">
+                            <div className="flex h-10 w-10 items-center justify-center rounded-full bg-destructive/10 text-destructive">
+                                <AlertCircle className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <DialogTitle className="text-base">{t('refund.requestConfirmTitle')}</DialogTitle>
+                                <DialogDescription className="text-sm">
+                                    {t('refund.requestConfirmMessage')}
+                                </DialogDescription>
+                            </div>
+                        </div>
+                    </DialogHeader>
+                    <DialogFooter className="sm:justify-end">
+                        <Button variant="outline" onClick={() => setConfirmOpen(false)} disabled={submitting}>
+                            {t('common.cancel')}
+                        </Button>
+                        <Button onClick={handleRefundConfirm} disabled={submitting}>
+                            {submitting ? t('common.processing') : t('common.confirm')}
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </main>
     )
 }

@@ -1,84 +1,34 @@
-import { getDashboardStats, getSetting, getVisitorCount } from "@/lib/db/queries"
+import { getDashboardStats, getSetting, getAllSettings, getVisitorCount } from "@/lib/db/queries"
+import { isRegistryEnabled } from "@/lib/registry"
 import { AdminSettingsContent } from "@/components/admin/settings-content"
+import { unstable_noStore } from "next/cache"
+import { cookies } from "next/headers"
 
 export default async function AdminSettingsPage() {
-    const [stats, shopName, shopDescription, shopLogo, shopFooter, themeColor, visitorCount, lowStockThreshold, checkinReward, checkinEnabled, noIndexEnabled] = await Promise.all([
-        getDashboardStats(),
-        (async () => {
-            try {
-                return await getSetting('shop_name')
-            } catch {
-                return null
-            }
-        })(),
-        (async () => {
-            try {
-                return await getSetting('shop_description')
-            } catch {
-                return null
-            }
-        })(),
-        (async () => {
-            try {
-                return await getSetting('shop_logo')
-            } catch {
-                return null
-            }
-        })(),
-        (async () => {
-            try {
-                return await getSetting('shop_footer')
-            } catch {
-                return null
-            }
-        })(),
-        (async () => {
-            try {
-                return await getSetting('theme_color')
-            } catch {
-                return null
-            }
-        })(),
-        (async () => {
-            try {
-                return await getVisitorCount()
-            } catch {
-                return 0
-            }
-        })(),
-        (async () => {
-            try {
-                const v = await getSetting('low_stock_threshold')
-                return Number.parseInt(v || '5', 10) || 5
-            } catch {
-                return 5
-            }
-        })(),
-        (async () => {
-            try {
-                const v = await getSetting('checkin_reward')
-                return Number.parseInt(v || '10', 10) || 10
-            } catch {
-                return 10
-            }
-        })(),
-        (async () => {
-            try {
-                const v = await getSetting('checkin_enabled')
-                return v !== 'false' // Default to true
-            } catch {
-                return true
-            }
-        })(),
-        (async () => {
-            try {
-                const v = await getSetting('noindex_enabled')
-                return v === 'true'
-            } catch {
-                return false
-            }
-        })(),
+    const cookieStore = await cookies()
+    void cookieStore.get('ldc_pending_order')
+    unstable_noStore()
+    const nowMs = Date.now()
+    const [stats, settingsMap, visitorCount] = await Promise.all([
+        getDashboardStats(nowMs),
+        getAllSettings(),
+        getVisitorCount().catch(() => 0)
     ])
+
+    const shopName = settingsMap['shop_name'] || null
+    const shopDescription = settingsMap['shop_description'] || null
+    const shopLogo = settingsMap['shop_logo'] || null
+    const shopFooter = settingsMap['shop_footer'] || null
+    const themeColor = settingsMap['theme_color'] || null
+
+    const lowStockThreshold = Number.parseInt(settingsMap['low_stock_threshold'] || '5', 10) || 5
+    const checkinReward = Number.parseInt(settingsMap['checkin_reward'] || '10', 10) || 10
+    const checkinEnabled = settingsMap['checkin_enabled'] !== 'false'
+    const wishlistEnabled = settingsMap['wishlist_enabled'] === 'true'
+    const noIndexEnabled = settingsMap['noindex_enabled'] === 'true'
+    const registryOptIn = settingsMap['registry_opt_in'] === 'true'
+    const refundReclaimCards = settingsMap['refund_reclaim_cards'] !== 'false'
+    const registryHideNav = settingsMap['registry_hide_nav'] === 'true'
 
     return (
         <AdminSettingsContent
@@ -92,7 +42,12 @@ export default async function AdminSettingsPage() {
             lowStockThreshold={lowStockThreshold}
             checkinReward={checkinReward}
             checkinEnabled={checkinEnabled}
+            wishlistEnabled={wishlistEnabled}
             noIndexEnabled={noIndexEnabled}
+            registryOptIn={registryOptIn}
+            refundReclaimCards={refundReclaimCards}
+            registryHideNav={registryHideNav}
+            registryEnabled={isRegistryEnabled()}
         />
     )
 }

@@ -1,20 +1,23 @@
-'use client'
+"use client"
 
-import { useState, useMemo } from "react"
-import { useI18n } from "@/lib/i18n/context"
+import { useDeferredValue, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { StarRating } from "@/components/star-rating"
-import ReactMarkdown from 'react-markdown'
 import { cn } from "@/lib/utils"
+import { StarRatingStatic } from "@/components/star-rating-static"
+import { NavigationPill } from "@/components/navigation-pill"
+import { useI18n } from "@/lib/i18n/context"
+import { INFINITE_STOCK } from "@/lib/constants"
 
 interface Product {
     id: string
     name: string
     description: string | null
+    descriptionPlain?: string | null
     price: string
     compareAtPrice?: string | null
     image: string | null
@@ -30,80 +33,76 @@ interface HomeContentProps {
     products: Product[]
     announcement?: string | null
     visitorCount?: number
-    categories?: Array<{ name: string; icon: string | null; sortOrder: number }>
+    categories?: string[]
+    categoryConfig?: Array<{ name: string; icon: string | null; sortOrder: number }>
     pendingOrders?: Array<{ orderId: string; createdAt: Date; productName: string; amount: string }>
+    wishlistEnabled?: boolean
+    filters: { q?: string; category?: string | null; sort?: string }
+    pagination: { page: number; pageSize: number; total: number }
 }
 
-export function HomeContent({ products, announcement, visitorCount, categories: categoryConfig, pendingOrders }: HomeContentProps) {
+export function HomeContent({ products, announcement, visitorCount, categories = [], categoryConfig, pendingOrders, wishlistEnabled = false, filters, pagination }: HomeContentProps) {
     const { t } = useI18n()
-    const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
-    const [searchTerm, setSearchTerm] = useState("")
-    const [sortKey, setSortKey] = useState<string>("default")
+    const [selectedCategory, setSelectedCategory] = useState<string | null>(filters.category || null)
+    const [searchTerm, setSearchTerm] = useState(filters.q || "")
+    const [sortKey, setSortKey] = useState(filters.sort || "default")
+    const [page, setPage] = useState(pagination.page || 1)
+    const deferredSearch = useDeferredValue(searchTerm)
 
-    // Extract unique categories
-    const categories = useMemo(() => {
-        const productCategories = new Set(products.map(p => p.category).filter(Boolean) as string[])
-        const configCategories = categoryConfig || []
+    useEffect(() => {
+        setPage(1)
+    }, [selectedCategory, sortKey, deferredSearch])
 
-        // Start with configured categories to preserve their order
-        const orderedNames = configCategories
-            .sort((a, b) => (a.sortOrder || 0) - (b.sortOrder || 0))
-            .map(c => c.name)
-
-        // Add any product categories that aren't in the config
-        const extraCategories = Array.from(productCategories)
-            .filter(c => !configCategories.some(config => config.name === c))
-            .sort()
-
-        return [...orderedNames, ...extraCategories]
-    }, [categoryConfig, products])
-
-    // Filter products
     const filteredProducts = useMemo(() => {
-        let result = products
+        const keyword = deferredSearch.trim().toLowerCase()
+        return products.filter((product) => {
+            if (selectedCategory && product.category !== selectedCategory) return false
+            if (!keyword) return true
+            const name = (product.name || "").toLowerCase()
+            const desc = (product.descriptionPlain || product.description || "").toLowerCase()
+            return name.includes(keyword) || desc.includes(keyword)
+        })
+    }, [products, selectedCategory, deferredSearch])
 
-        // Category filter
-        if (selectedCategory) {
-            result = result.filter(p => p.category === selectedCategory)
-        }
-
-        // Search filter
-        if (searchTerm) {
-            const lowerTerm = searchTerm.toLowerCase()
-            result = result.filter(p =>
-                p.name.toLowerCase().includes(lowerTerm) ||
-                (p.description && p.description.toLowerCase().includes(lowerTerm))
-            )
-        }
-
-        const sorted = [...result]
+    const sortedProducts = useMemo(() => {
+        const list = [...filteredProducts]
         switch (sortKey) {
-            case 'priceAsc':
-                sorted.sort((a, b) => Number(a.price) - Number(b.price))
-                break
-            case 'priceDesc':
-                sorted.sort((a, b) => Number(b.price) - Number(a.price))
-                break
-            case 'stockDesc':
-                sorted.sort((a, b) => (b.stockCount || 0) - (a.stockCount || 0))
-                break
-            case 'soldDesc':
-                sorted.sort((a, b) => (b.soldCount || 0) - (a.soldCount || 0))
-                break
+            case "priceAsc":
+                return list.sort((a, b) => Number(a.price) - Number(b.price))
+            case "priceDesc":
+                return list.sort((a, b) => Number(b.price) - Number(a.price))
+            case "stockDesc":
+                return list.sort((a, b) => (b.stockCount || 0) - (a.stockCount || 0))
+            case "soldDesc":
+                return list.sort((a, b) => (b.soldCount || 0) - (a.soldCount || 0))
+            case "hot":
+                return list.sort((a, b) => Number(!!b.isHot) - Number(!!a.isHot))
             default:
-                break
+                return list
         }
+    }, [filteredProducts, sortKey])
 
-        return sorted
-    }, [products, selectedCategory, searchTerm, sortKey])
+    const totalPages = Math.max(1, Math.ceil(sortedProducts.length / pagination.pageSize))
+    const currentPage = Math.min(Math.max(1, page), totalPages)
+    const startIndex = (currentPage - 1) * pagination.pageSize
+    const pageItems = sortedProducts.slice(startIndex, startIndex + pagination.pageSize)
+    const hasMore = currentPage < totalPages
 
     return (
-        <main className="container py-8 md:py-16">
+        <main className="container py-8 md:py-16 relative overflow-hidden">
+            {/* Atmosphere background */}
+            <div className="pointer-events-none absolute inset-0 -z-10">
+                <div className="absolute -top-48 left-1/2 h-80 w-[90vw] -translate-x-1/2 rounded-full bg-gradient-to-r from-primary/8 via-sky-200/8 to-emerald-200/8 blur-3xl" />
+                <div className="absolute top-10 left-[12%] h-36 w-60 rounded-full bg-primary/7 blur-3xl" />
+                <div className="absolute top-16 right-[10%] h-32 w-56 rounded-full bg-sky-200/8 blur-3xl dark:bg-sky-200/6" />
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,_rgba(0,0,0,0.015),_transparent_70%)] dark:bg-[radial-gradient(circle_at_top,_rgba(255,255,255,0.02),_transparent_70%)]" />
+                <div className="absolute inset-0 opacity-[0.012] [background-image:radial-gradient(#000000_1px,transparent_1px)] [background-size:24px_24px] dark:[background-image:radial-gradient(#ffffff_1px,transparent_1px)]" />
+            </div>
 
             {/* Announcement Banner */}
             {announcement && (
                 <section className="mb-8">
-                    <div className="relative overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 p-4">
+                    <div className="relative overflow-hidden rounded-xl border border-primary/20 bg-gradient-to-r from-primary/5 via-primary/10 to-primary/5 p-4 animate-in fade-in slide-in-from-top-2 duration-300">
                         <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-primary to-primary/50" />
                         <div className="flex items-start gap-3 pl-3">
                             <svg className="w-5 h-5 text-primary shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -146,9 +145,19 @@ export function HomeContent({ products, announcement, visitorCount, categories: 
             <div className="flex flex-col gap-6 mb-8">
                 <div className="flex items-center justify-between">
                     {typeof visitorCount === 'number' && (
-                        <Badge variant="secondary" className="px-3 py-1">
+                        <Badge variant="secondary" className="px-3 py-1 bg-background/70 shadow-sm border border-border/40">
                             {t('home.visitorCount', { count: visitorCount })}
                         </Badge>
+                    )}
+                    {wishlistEnabled && (
+                        <Link href="/wishlist">
+                            <Button size="icon-sm" variant="outline" className="h-9 w-9 p-0">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                                    <path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.6l-1-1a5.5 5.5 0 0 0-7.8 7.8l1 1L12 21l7.8-7.6 1-1a5.5 5.5 0 0 0 0-7.8Z" />
+                                </svg>
+                                <span className="sr-only">{t('wishlist.title')}</span>
+                            </Button>
+                        </Link>
                     )}
                 </div>
 
@@ -173,37 +182,21 @@ export function HomeContent({ products, announcement, visitorCount, categories: 
                         />
                     </div>
 
-                    {/* Horizontal Category Pills */}
+                    {/* Apple-style Category Navigation Pill */}
                     <div className="flex-1 w-full overflow-x-auto no-scrollbar pb-2 md:pb-0">
-                        <div className="flex gap-2">
-                            <Button
-                                variant={selectedCategory === null ? "default" : "outline"}
-                                size="sm"
-                                className={cn(
-                                    "rounded-full whitespace-nowrap transition-all duration-300",
-                                    selectedCategory === null ? "bg-primary shadow-md shadow-primary/20" : "bg-transparent border-dashed border-border hover:bg-muted"
-                                )}
-                                onClick={() => setSelectedCategory(null)}
-                            >
-                                {t('common.all')}
-                            </Button>
-                            {categories.map(category => (
-                                <Button
-                                    key={category}
-                                    variant={selectedCategory === category ? "default" : "outline"}
-                                    size="sm"
-                                    className={cn(
-                                        "rounded-full capitalize whitespace-nowrap transition-all duration-300",
-                                        selectedCategory === category ? "bg-primary shadow-md shadow-primary/20" : "bg-transparent hover:bg-muted"
-                                    )}
-                                    onClick={() => setSelectedCategory(category)}
-                                >
-                                    {categoryConfig?.length
-                                        ? `${categoryConfig.find(c => c.name === category)?.icon ? `${categoryConfig.find(c => c.name === category)?.icon} ` : ''}${category}`
-                                        : category}
-                                </Button>
-                            ))}
-                        </div>
+                        <NavigationPill
+                            items={[
+                                { key: '', label: t('common.all') },
+                                ...categories.map(cat => ({
+                                    key: cat,
+                                    label: categoryConfig?.find(c => c.name === cat)?.icon
+                                        ? `${categoryConfig.find(c => c.name === cat)?.icon} ${cat}`
+                                        : cat,
+                                }))
+                            ]}
+                            selectedKey={selectedCategory || ''}
+                            onSelect={(key) => setSelectedCategory(key || null)}
+                        />
                     </div>
 
                     {/* Sort Dropdown (Simplified as inline buttons for now, or dropdown later) */}
@@ -212,8 +205,9 @@ export function HomeContent({ products, announcement, visitorCount, categories: 
                         {[
                             { key: 'default', label: t('home.sort.default'), icon: null },
                             { key: 'stockDesc', label: t('home.sort.stock'), icon: '📦' },
-                            { key: 'priceAsc', label: 'Price ↑', icon: '💰' },
-                            { key: 'priceDesc', label: 'Price ↓', icon: '💰' },
+                            { key: 'soldDesc', label: t('home.sort.sold'), icon: '🔥' },
+                            { key: 'priceAsc', label: t('home.sort.priceAsc'), icon: '💰' },
+                            { key: 'priceDesc', label: t('home.sort.priceDesc'), icon: '💰' },
                         ].map(opt => (
                             <Button
                                 key={opt.key}
@@ -226,9 +220,7 @@ export function HomeContent({ products, announcement, visitorCount, categories: 
                                 )}
                                 onClick={() => setSortKey(opt.key)}
                             >
-                                {opt.key === 'priceAsc' ? t('home.sort.priceAsc') :
-                                    opt.key === 'priceDesc' ? t('home.sort.priceDesc') :
-                                        opt.label}
+                                {opt.label}
                             </Button>
                         ))}
                     </div>
@@ -237,8 +229,9 @@ export function HomeContent({ products, announcement, visitorCount, categories: 
 
             {/* Main Product Grid (Full Width) */}
             <section>
-                {filteredProducts.length === 0 ? (
-                    <div className="text-center py-20 bg-muted/30 rounded-2xl border border-dashed border-muted-foreground/20">
+                {sortedProducts.length === 0 ? (
+                    <div className="text-center py-20 bg-muted/30 rounded-2xl border border-dashed border-muted-foreground/20 relative overflow-hidden">
+                        <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_rgba(0,0,0,0.04),_transparent_60%)] dark:bg-[radial-gradient(circle_at_center,_rgba(255,255,255,0.06),_transparent_60%)]" />
                         <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-muted/50 mb-4">
                             <svg className="w-8 h-8 text-muted-foreground/50" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
@@ -247,48 +240,53 @@ export function HomeContent({ products, announcement, visitorCount, categories: 
                         <p className="text-muted-foreground font-medium">{t('home.noProducts')}</p>
                         <p className="text-sm text-muted-foreground/60 mt-2">{t('home.checkBackLater')}</p>
                         {selectedCategory && (
-                            <Button variant="link" onClick={() => setSelectedCategory(null)} className="mt-4">
+                            <Button variant="link" className="mt-4" onClick={() => setSelectedCategory(null)}>
                                 {t('common.all')}
                             </Button>
                         )}
                     </div>
                 ) : (
-                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-                        {filteredProducts.map((product, index) => (
+                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 2xl:grid-cols-4">
+                        {pageItems.map((product, index) => (
                             <Card
                                 key={product.id}
-                                className="group overflow-hidden flex flex-col tech-card animate-fade-in border-border/40 hover:border-primary/50 transition-colors"
-                                style={{ animationDelay: `${index * 50}ms` }}
+                                className="group relative overflow-hidden flex flex-col rounded-2xl border border-border/30 bg-card shadow-[0_1px_2px_rgba(0,0,0,0.03)] hover:shadow-[0_6px_18px_rgba(0,0,0,0.06)] transition-all duration-300 animate-in fade-in slide-in-from-bottom-2 motion-reduce:animate-none"
+                                style={{ animationDelay: `${index * 60}ms` }}
                             >
-                                {/* Image Section with aspect ratio tweak */}
-                                <Link href={`/buy/${product.id}`} className="block aspect-[16/10] bg-gradient-to-br from-muted/30 to-muted/10 relative overflow-hidden group-hover:opacity-90">
-                                    <img
+                                <Link
+                                    href={`/buy/${product.id}`}
+                                    aria-label={t('common.viewDetails')}
+                                    className="absolute inset-0 z-10"
+                                />
+                                {/* Image Section */}
+                                <div className="relative m-4 aspect-[16/10] overflow-hidden rounded-xl border border-border/20 bg-muted/10">
+                                    <Image
                                         src={product.image || `https://api.dicebear.com/7.x/shapes/svg?seed=${product.id}`}
                                         alt={product.name}
-                                        className="object-cover w-full h-full transition-transform duration-500 group-hover:scale-105"
+                                        fill
+                                        sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+                                        priority={index < 2}
+                                        className="object-contain transition-transform duration-700 ease-out group-hover:scale-105"
                                     />
-                                    {/* Overlay gradient */}
-                                    <div className="absolute inset-0 bg-gradient-to-t from-background/90 via-transparent to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
                                     {product.category && product.category !== 'general' && (
-                                        <Badge className="absolute top-2 right-2 text-[10px] h-5 px-2 capitalize bg-background/60 backdrop-blur-md border border-white/20 text-foreground shadow-sm">
+                                        <Badge className="absolute top-2 right-2 text-[10px] h-5 px-2 capitalize bg-background/90 border border-border/30 text-foreground shadow-sm">
                                             {product.category}
                                         </Badge>
                                     )}
-                                </Link>
+                                </div>
+                                <div className="mx-4 h-px bg-border/15" />
 
                                 {/* Content Section */}
-                                <CardContent className="flex-1 p-4">
+                                <CardContent className="relative z-20 flex-1 px-5 pb-5 pt-4 pointer-events-none">
                                     <div className="flex items-start justify-between gap-2 mb-1.5">
-                                        <Link href={`/buy/${product.id}`} className="block">
-                                            <h3 className="font-semibold text-base group-hover:text-primary transition-colors duration-300 leading-snug line-clamp-1" title={product.name}>
-                                                {product.name}
-                                            </h3>
-                                        </Link>
+                                        <h3 className="font-bold text-base tracking-tight group-hover:text-primary transition-colors duration-300 leading-snug line-clamp-1" title={product.name}>
+                                            {product.name}
+                                        </h3>
                                     </div>
 
                                     {product.isHot && (
                                         <div className="mb-2">
-                                            <Badge variant="default" className="text-[10px] h-4 px-1 bg-primary/10 text-primary hover:bg-primary/20 border-0">
+                                            <Badge variant="default" className="text-[10px] h-4 px-1.5 bg-orange-500 text-white border-0 shadow-sm">
                                                 🔥 {t('buy.hot')}
                                             </Badge>
                                         </div>
@@ -297,49 +295,46 @@ export function HomeContent({ products, announcement, visitorCount, categories: 
                                     {/* Rating */}
                                     {product.reviewCount !== undefined && product.reviewCount > 0 && (
                                         <div className="flex items-center gap-1.5 mb-2.5">
-                                            <StarRating rating={Math.round(product.rating || 0)} size="xs" />
+                                            <StarRatingStatic rating={Math.round(product.rating || 0)} size="xs" />
                                             <span className="text-[10px] text-muted-foreground font-medium">({product.reviewCount})</span>
                                         </div>
                                     )}
 
                                     <div className="text-muted-foreground text-xs line-clamp-2 h-8 leading-4 overflow-hidden opacity-90">
-                                        <ReactMarkdown
-                                            allowedElements={["text", "span"]}
-                                            unwrapDisallowed={true}
-                                        >
-                                            {product.description || t('buy.noDescription')}
-                                        </ReactMarkdown>
+                                        {product.descriptionPlain || product.description || t('buy.noDescription')}
                                     </div>
                                 </CardContent>
 
                                 {/* Footer Section */}
-                                <CardFooter className="p-4 pt-0 flex items-center justify-between gap-3 mt-auto border-t border-border/30 bg-muted/5">
-                                    <div className="flex flex-col">
-                                        <div className="flex items-baseline gap-1.5">
-                                            <span className="text-lg font-bold text-primary">{Number(product.price)}</span>
+                                <CardFooter className="relative z-20 px-5 py-4 flex flex-wrap items-center gap-3 mt-auto border-t border-border/15 bg-transparent pointer-events-none">
+                                    <div className="flex min-w-0 flex-1 flex-col">
+                                        <div className="flex items-baseline gap-2">
+                                            <span className="text-xl font-black text-primary tabular-nums whitespace-nowrap tracking-tight">{Number(product.price)}</span>
                                             <span className="text-xs text-muted-foreground font-medium uppercase">{t('common.credits')}</span>
+                                            {product.compareAtPrice && Number(product.compareAtPrice) > Number(product.price) && (
+                                                <span className="text-xs text-muted-foreground/70 line-through tabular-nums">
+                                                    {Number(product.compareAtPrice)}
+                                                </span>
+                                            )}
                                         </div>
-                                        {product.compareAtPrice && Number(product.compareAtPrice) > Number(product.price) && (
-                                            <span className="text-xs text-muted-foreground/60 line-through -mt-1 block">
-                                                {Number(product.compareAtPrice)}
-                                            </span>
-                                        )}
                                         <div className="flex items-center gap-2 mt-1">
-                                            <span className="text-[10px] text-muted-foreground">
-                                                {t('common.stock')}: {product.stockCount}
-                                            </span>
+                                            <div className="flex items-center text-xs text-muted-foreground">
+                                                {/* Assuming Archive icon is imported, e.g., from 'lucide-react' */}
+                                                {/* <Archive className="w-3 h-3 mr-1" /> */}
+                                                <span>{t('admin.products.stock')}: {product.stockCount >= INFINITE_STOCK ? '∞' : product.stockCount}</span>
+                                            </div>
                                             <span className="text-[10px] text-muted-foreground">
                                                 {t('common.sold')}: {product.soldCount}
                                             </span>
                                         </div>
                                     </div>
 
-                                    <Link href={`/buy/${product.id}`}>
+                                    <Link href={`/buy/${product.id}`} className="ml-auto relative z-30 pointer-events-auto">
                                         <Button
                                             size="sm"
                                             className={cn(
-                                                "h-8 px-4 text-xs font-medium rounded-full shadow-sm hover:shadow-md transition-all active:scale-95 cursor-pointer",
-                                                product.stockCount > 0 ? "bg-foreground text-background hover:bg-foreground/90" : "bg-muted text-muted-foreground hover:bg-muted"
+                                                "h-9 px-5 text-xs font-semibold rounded-full backdrop-blur-sm shadow-sm hover:shadow-lg hover:scale-105 transition-all duration-300 active:scale-95 cursor-pointer",
+                                                product.stockCount > 0 ? "bg-primary/90 text-primary-foreground hover:bg-primary" : "bg-muted/80 text-muted-foreground hover:bg-muted"
                                             )}
                                             disabled={product.stockCount <= 0}
                                         >
@@ -352,6 +347,19 @@ export function HomeContent({ products, announcement, visitorCount, categories: 
                     </div>
                 )}
             </section>
+
+            {sortedProducts.length > 0 && (
+                <div className="flex items-center justify-between mt-10 text-sm text-muted-foreground">
+                    <span>
+                        {t('search.page', { page: currentPage, totalPages })}
+                    </span>
+                    {hasMore && (
+                        <Button variant="outline" size="sm" onClick={() => setPage(currentPage + 1)}>
+                            {t('common.loadMore')}
+                        </Button>
+                    )}
+                </div>
+            )}
         </main>
     )
 }
